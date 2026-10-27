@@ -14,7 +14,11 @@
 
 const JEU = {
   titre: "La Malédiction de Saint-Gal",
-  version: "3.0",
+  version: "4.0",
+
+  // false = rien à cacher sur place : tout apparaît sur le téléphone à l'arrivée.
+  // true  = version avec objets cachés (enveloppes, boîtes…) et vrai coffre.
+  objetsPhysiques: false,
 
   // Code pour ouvrir le mode organisateur (à changer et à garder secret)
   codeOrganisateur: "1031",
@@ -77,8 +81,9 @@ const JEU = {
       cachette: "Enveloppe noire nouée d'un ruban orange, accrochée à hauteur d'enfant dans le passage.",
       contenu: "Une carte avec une chauve-souris dessinée, le mot codé CSJMMF et « 1er chiffre : 3 ».",
       recit: "La ruelle est étroite et sombre. Contre le mur, la sorcière a glissé un message codé…",
+      apparition: { emoji: "🦇", texte: "Une chauve-souris sort de la ruelle !" },
       petits: {
-        question: "Quelle bête est dessinée sur la carte ?",
+        question: "Quelle bête est apparue ?",
         choix: ["🦇", "🐈‍⬛", "🕷️", "🦉"],
         bonne: 0
       },
@@ -89,7 +94,8 @@ const JEU = {
         indices: ["Je pousse dans le potager.", "On fait de la soupe avec moi.", "Ça commence par CITR…"]
       },
       grands: {
-        question: "La sorcière a avancé chaque lettre d'un cran dans l'alphabet (A devient B, B devient C…). Décodez le mot écrit sur la carte.",
+        question: "La sorcière a avancé chaque lettre d'un cran dans l'alphabet (A devient B, B devient C…). Décodez le message de la sorcière.",
+        code: "CSJMMF",
         reponses: ["brille"],
         indices: ["Faites l'inverse : reculez chaque lettre d'un cran.", "C devient B, S devient R…", "Le mot commence par BRI…"]
       },
@@ -109,8 +115,9 @@ const JEU = {
       cachette: "Boîte orange (boîte à chaussures peinte), posée sous un banc.",
       contenu: "Un parchemin avec le mot ENUL écrit à l'envers et « 2e chiffre : 1 ».",
       recit: "Une odeur de soupe aux crapauds… La boîte est encore tiède !",
+      apparition: { couleur: "#ff8a1f", emoji: "📦", texte: "Une boîte magique apparaît sous le banc !" },
       petits: {
-        question: "De quelle couleur est la boîte ?",
+        question: "De quelle couleur était la boîte ?",
         couleurs: ["#ff8a1f", "#3b82f6", "#22c55e", "#f5f5f5"],
         nomsCouleurs: ["orange", "bleue", "verte", "blanche"],
         bonne: 0
@@ -122,7 +129,8 @@ const JEU = {
         indices: ["Comptez les crapauds d'un chaudron, puis recommencez.", "4 + 4 + 4…", "C'est entre 10 et 15."]
       },
       grands: {
-        question: "Le mot du parchemin est écrit à l'envers. Remettez-le dans le bon sens.",
+        question: "Le message de la sorcière est écrit à l'envers. Remettez-le dans le bon sens.",
+        code: "ENUL",
         reponses: ["lune"],
         indices: ["Lisez de droite à gauche.", "La dernière lettre devient la première.", "On la voit la nuit dans le ciel."]
       },
@@ -142,8 +150,9 @@ const JEU = {
       cachette: "Carte plastifiée derrière une citrouille sculptée (ou une citrouille en papier).",
       contenu: "Une carte avec 3 citrouilles dessinées, les nombres 4-15-18-5-5 et « 3e chiffre : 1 ».",
       recit: "Les citrouilles vous fixent avec leurs yeux de feu. L'une d'elles cache un secret…",
+      apparition: { emoji: "🎃🎃🎃", texte: "Des citrouilles sortent de terre !" },
       petits: {
-        question: "Combien de citrouilles sur la carte ?",
+        question: "Combien de citrouilles sont sorties ?",
         compter: { emoji: "🎃", options: [1, 2, 3, 4] },
         bonne: 2
       },
@@ -154,7 +163,8 @@ const JEU = {
         indices: ["J'ai des ailes mais je ne suis pas un oiseau.", "Je vis dans les grottes et les clochers.", "Mon nom contient « chauve »."]
       },
       grands: {
-        question: "Chaque nombre est une lettre : A=1, B=2, C=3… Décodez les nombres de la carte.",
+        question: "Chaque nombre est une lettre : A=1, B=2, C=3… Décodez les nombres de la sorcière.",
+        code: "4 - 15 - 18 - 5 - 5",
         reponses: ["doree", "dorée"],
         indices: ["4 est la 4e lettre de l'alphabet.", "4 = D, 15 = O…", "C'est la couleur de l'or."]
       },
@@ -174,8 +184,9 @@ const JEU = {
       cachette: "Pierre peinte d'une étoile jaune, posée au sol près de fantômes en drap.",
       contenu: "Sous la pierre : une carte avec la suite 🎃 👻 🕷️ 🦇 🌙 et « 4e chiffre : 0 ».",
       recit: "Brrr… Un souffle froid. Les fantômes ne sont pas méchants : ils gardent un message en symboles.",
+      apparition: { emoji: "⭐", texte: "Une étoile magique brille près de l'eau !" },
       petits: {
-        question: "Quelle forme est peinte sur la pierre ?",
+        question: "Quelle forme brillait ?",
         choix: ["⭐", "⚫", "🔺", "🟥"],
         bonne: 0
       },
@@ -186,7 +197,8 @@ const JEU = {
         indices: ["Il faut enlever.", "20 − 7…", "C'est entre 10 et 15."]
       },
       grands: {
-        question: "Avec la grille des fantômes, remplacez chaque symbole de la carte par sa lettre.",
+        question: "Avec la grille des fantômes, remplacez chaque symbole du message par sa lettre.",
+        code: "🎃 👻 🕷️ 🦇 🌙",
         grille: [["🎃", "S"], ["👻", "A"], ["🕷️", "U"], ["🦇", "V"], ["🌙", "E"], ["🕸️", "R"], ["🐈‍⬛", "O"]],
         reponses: ["sauve"],
         indices: ["🎃 = S. Continuez dans l'ordre de la carte.", "S, A, U…", "Le mot veut dire « protège »."]
@@ -207,8 +219,9 @@ const JEU = {
       cachette: "Un vieux livre (grimoire) dans un sac, avec une araignée en plastique dessus.",
       contenu: "Une page avec 8 mots illustrés : Sorcière, Araignée, Inquiétante, Nuit, Toile, Grimoire, Araignée, Lune.",
       recit: "Le grimoire s'ouvre tout seul. Les pages sentent la poussière et la cire de bougie…",
+      apparition: { emoji: "🕷️", texte: "Une araignée garde le grimoire !" },
       petits: {
-        question: "Quelle bête garde le grimoire ?",
+        question: "Quelle bête gardait le grimoire ?",
         choix: ["🐸", "🕷️", "🐭", "🦊"],
         bonne: 1
       },
@@ -219,7 +232,8 @@ const JEU = {
         indices: ["On me met sur la tête.", "J'ai un grand bord rond.", "Ça commence par CHA…"]
       },
       grands: {
-        question: "Prenez la première lettre de chaque mot de la page, dans l'ordre. Quel nom apparaît ?",
+        question: "Prenez la première lettre de chaque mot du grimoire, dans l'ordre. Quel nom apparaît ?",
+        code: "Sorcière · Araignée · Inquiétante · Nuit · Toile · Grimoire · Araignée · Lune",
         reponses: ["saint-gal", "saintgal", "saint gal"],
         indices: ["Sorcière donne S.", "S, A, I, N, T…", "C'est le nom de votre village !"]
       },
@@ -236,7 +250,7 @@ const JEU = {
       indice: "Retournez devant la mairie, là où l'aventure a commencé. Le coffre vous attend !",
       x: 505, y: 444, lat: 44.669485, lng: 3.424379
     },
-    texte: "Vous avez les cinq mots et les quatre chiffres. Rejoignez le coffre, attendez les autres équipes, et prononcez la formule tous ensemble, très fort !",
+    texte: "Vous avez les cinq mots et les quatre chiffres. Attendez les autres équipes, ouvrez le coffre magique de la sorcière, puis criez la formule tous ensemble, très fort !",
     victoire: "La malédiction est levée ! Les esprits retournent dormir et Saint-Gal brille à nouveau. Bravo, chasseurs de sorcière !"
   }
 };

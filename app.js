@@ -132,7 +132,6 @@
         gps.erreur = null;
         if (!S.gps) { S.gps = true; sauver(); }
         if (gps.premier) { gps.premier = false; if (dansLeVillage()) { carte.suivre = true; } }
-        if (carte.suivre && carte.vue && dansLeVillage()) { var m = versCarte(gps.pos.lat, gps.pos.lng); centrerSur(m[0], m[1]); }
         majGPS(); verifierArrivee();
       }, function (err) {
         gps.erreur = err && err.code === 1
@@ -189,6 +188,11 @@
     return { e: "🥶", t: "Glacé", c: "glace" };
   }
   var derniereDistance = null;
+  var apparitionVue = {}, minuterie = null;
+  function minuterieApparition(id) {
+    clearTimeout(minuterie);
+    minuterie = setTimeout(function () { if (S.ecran === "etape" && S.courant === id && !apparitionVue[id]) { apparitionVue[id] = true; son.fantome(); rendre(); } }, 6000);
+  }
   function radarHTML(lieu) {
     return '<div class="radar" id="radar" data-lat="' + lieu.lat + '" data-lng="' + lieu.lng + '">' +
       '<span class="radar-emoji" id="radar-emoji" aria-hidden="true">📍</span>' +
@@ -241,13 +245,10 @@
       '<svg id="plan-svg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" aria-label="Carte">' + fondCarte() + "</svg>" +
       '<span id="gps-halo" class="gps-halo" hidden></span><span id="gps-point" class="gps-point" hidden></span>' +
       '<span class="repere prochain cible" data-mx="' + lieu.x + '" data-my="' + lieu.y + '" aria-hidden="true">' + emoji + "</span>" +
-      '<div class="outils-carte"><button data-carte="plus" aria-label="Zoomer">＋</button><button data-carte="moins" aria-label="Dézoomer">−</button><button data-carte="moi" aria-label="Me suivre">📍</button></div>' +
       '<span class="attribution">' + esc(JEU.carte.attribution) + "</span></div>";
   }
   function vueCible(lieu) {
-    var w = 160, cx = lieu.x, cy = lieu.y;
-    if (gps.pos && dansLeVillage()) { var m = versCarte(gps.pos.lat, gps.pos.lng); w = Math.max(160, Math.abs(m[0] - lieu.x) * 2 + 80, Math.abs(m[1] - lieu.y) * 2 / ratioPlan() + 80); cx = (m[0] + lieu.x) / 2; cy = (m[1] + lieu.y) / 2; }
-    var r = ratioPlan(); return bornerVue({ x: cx - w / 2, y: cy - w * r / 2, w: w });
+    var w = 240, r = ratioPlan(); return bornerVue({ x: lieu.x - w / 2, y: lieu.y - w * r / 2, w: w });
   }
 
   function majGPS() {
@@ -259,7 +260,6 @@
     if (bouton) bouton.hidden = gps.suivi !== null;
     majRadar();
     var mini = document.querySelector(".plan-mini .cible");
-    if (mini && carte.cadrage && gps.pos) { carte.vue = vueCible({ x: +mini.dataset.mx, y: +mini.dataset.my }); appliquerVue(); }
     placerSurCarte();
   }
 
@@ -349,51 +349,8 @@
   }
   function brancherCarte() {
     var plan = document.getElementById("plan"); if (!plan) return;
-    if (!carte.vue) carte.vue = vueParcours(); else bornerVue(carte.vue);
+    carte.vue = vueParcours();
     appliquerVue();
-    var pts = {}, depart = null, pince = null;
-    function versMetres(dxPx, dyPx) { var k = carte.vue.w / plan.clientWidth; return [dxPx * k, dyPx * k]; }
-    plan.addEventListener("pointerdown", function (e) {
-      if (e.target.closest(".outils-carte")) return;
-      pts[e.pointerId] = { x: e.clientX, y: e.clientY };
-      var ids = Object.keys(pts);
-      if (ids.length === 1) { depart = { x: e.clientX, y: e.clientY, vx: carte.vue.x, vy: carte.vue.y }; carte.glisse = false; }
-      if (ids.length === 2) {
-        var a = pts[ids[0]], b = pts[ids[1]], r = plan.getBoundingClientRect();
-        var cx = (a.x + b.x) / 2 - r.left, cy = (a.y + b.y) / 2 - r.top;
-        pince = { d: Math.hypot(a.x - b.x, a.y - b.y), vue: Object.assign({}, carte.vue), mx: carte.vue.x + cx / r.width * carte.vue.w, my: carte.vue.y + cy / r.height * carte.vue.h };
-        carte.glisse = true;
-      }
-    });
-    plan.addEventListener("pointermove", function (e) {
-      if (!pts[e.pointerId]) return;
-      pts[e.pointerId] = { x: e.clientX, y: e.clientY };
-      var ids = Object.keys(pts);
-      if (ids.length >= 2 && pince) {
-        var a = pts[ids[0]], b = pts[ids[1]], d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
-        var nw = Math.max(70, Math.min(CARTE_SG.vueMax[2], pince.vue.w * pince.d / d)), k = nw / pince.vue.w;
-        carte.vue.w = nw; carte.vue.x = pince.mx - (pince.mx - pince.vue.x) * k; carte.vue.y = pince.my - (pince.my - pince.vue.y) * k;
-        carte.suivre = false; carte.cadrage = false; bornerVue(carte.vue); appliquerVue(); return;
-      }
-      if (!depart) return;
-      var dx = e.clientX - depart.x, dy = e.clientY - depart.y;
-      if (!carte.glisse && Math.hypot(dx, dy) < 8) return;
-      carte.glisse = true; carte.suivre = false; carte.cadrage = false;
-      var m = versMetres(dx, dy); carte.vue.x = depart.vx - m[0]; carte.vue.y = depart.vy - m[1]; bornerVue(carte.vue); appliquerVue();
-    });
-    function fin(e) {
-      delete pts[e.pointerId]; var ids = Object.keys(pts);
-      if (ids.length < 2) pince = null;
-      if (ids.length === 1) { var p = pts[ids[0]]; depart = { x: p.x, y: p.y, vx: carte.vue.x, vy: carte.vue.y }; }
-      if (!ids.length) depart = null;
-    }
-    plan.addEventListener("pointerup", fin); plan.addEventListener("pointercancel", fin); plan.addEventListener("pointerleave", fin);
-    plan.addEventListener("click", function (e) { if (carte.glisse && !e.target.closest(".outils-carte")) { e.stopPropagation(); e.preventDefault(); carte.glisse = false; } }, true);
-    plan.addEventListener("wheel", function (e) {
-      e.preventDefault(); var r = plan.getBoundingClientRect();
-      var mx = carte.vue.x + (e.clientX - r.left) / r.width * carte.vue.w, my = carte.vue.y + (e.clientY - r.top) / r.height * carte.vue.h;
-      carte.suivre = false; carte.cadrage = false; zoomer(e.deltaY > 0 ? 1.15 : 1 / 1.15, mx, my);
-    }, { passive: false });
   }
 
   /* ------------------------------------------------------------------ */
@@ -436,7 +393,15 @@
       '<p class="doux">Un escape game d\'Halloween à jouer en équipe, avec un adulte.</p>' +
       '<div class="pile" style="width:100%;margin-top:12px">' + (reprise || '<button class="btn" data-action="commencer">Commencer l\'aventure</button>') +
       '<button class="btn second" data-aller="verif">Prêt pour le mode avion ?</button>' +
+      '<button class="btn second" data-aller="partage">📱 Partager le jeu (QR code)</button>' +
       '<button class="btn discret" data-aller="pin">Mode organisateur</button></div></section>';
+  };
+
+  vues.partage = function () {
+    var url = "https://gaetanvelay14-bot.github.io/malediction-saint-gal/";
+    return '<section class="pile centre"><h2>Partager le jeu</h2><p style="font-size:1.1rem">Scannez ce QR code avec l\'appareil photo d\'un autre téléphone, puis installez le jeu.</p>' +
+      '<div class="qr"><img src="qr.svg" alt="QR code du jeu" width="260" height="260"></div><p class="adresse">' + url + "</p>" +
+      '<button class="btn second" data-action="retour-jeu">Retour</button></section>';
   };
 
   vues.intro = function () {
@@ -463,27 +428,26 @@
     var trace = '<polyline points="' + pts.map(function (p) { return p.x + "," + p.y; }).join(" ") + '" fill="none" stroke="' + eq.couleur + '" stroke-width="3" stroke-dasharray="7 5" stroke-linecap="round" stroke-linejoin="round" opacity=".95"/>';
     var reperes = eq.ordre.map(function (id, i) {
       var d = donneesEtape(id), st = S.etapes[id], cls = st && st.fini ? "fait" : (id === prochain ? "prochain" : "verrou");
-      return '<button class="repere ' + cls + '" data-mx="' + d.lieu.x + '" data-my="' + d.lieu.y + '" data-repere="' + id + '" aria-label="Cachette ' + (i + 1) + " : " + esc(d.nom) + '">' + (st && st.fini ? "✓" : String(i + 1)) + "</button>";
+      return '<span class="repere ' + cls + '" data-mx="' + d.lieu.x + '" data-my="' + d.lieu.y + '" aria-label="Cachette ' + (i + 1) + '">' + (st && st.fini ? "✓" : String(i + 1)) + "</span>";
     }).join("");
-    reperes += '<button class="repere final ' + (finalPret ? "prochain" : "") + '" data-mx="' + F.x + '" data-my="' + F.y + '" data-repere="final" aria-label="Le coffre">' + (finalPret ? "🗝️" : "🔒") + "</button>";
+    reperes += '<span class="repere final ' + (finalPret ? "prochain" : "") + '" data-mx="' + F.x + '" data-my="' + F.y + '" aria-label="Le coffre">' + (finalPret ? "🗝️" : "🔒") + "</span>";
     var nonVerifies = JEU.etapes.some(function (e) { return !e.lieu.verifie; }) || !F.verifie;
     var msg;
     if (finalPret) msg = "Les cinq morceaux sont à vous ! Filez au coffre 🗝️";
-    else if (prochain) msg = "Prochaine cachette : n°" + (eq.ordre.indexOf(prochain) + 1) + ", « " + donneesEtape(prochain).nom + " ». Touchez le rond orange.";
+    else if (prochain) msg = "Prochaine cachette : le rond orange n°" + (eq.ordre.indexOf(prochain) + 1) + ".";
     var info = texteInfoCarte();
     return '<section class="pile">' + entete() +
       "<h2>La carte</h2><p>" + esc(msg) + "</p>" +
       '<div class="plan" id="plan">' +
         '<svg id="plan-svg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" aria-label="Carte de Saint-Gal">' + fondCarte() + trace + "</svg>" +
         '<span id="gps-halo" class="gps-halo" hidden></span><span id="gps-point" class="gps-point" hidden></span>' + reperes +
-        '<div class="outils-carte"><button data-carte="plus" aria-label="Zoomer">＋</button><button data-carte="moins" aria-label="Dézoomer">−</button>' +
-        '<button data-carte="moi" aria-label="Me suivre sur la carte">📍</button><button data-carte="parcours" aria-label="Voir tout le parcours">⤢</button></div>' +
         '<span class="attribution">' + esc(JEU.carte.attribution) + "</span>" +
       "</div>" +
+      (prochain || finalPret ? '<button class="btn gros" data-action="aller-prochaine">' + (prochain ? "🔍 Aller à la cachette n°" + (eq.ordre.indexOf(prochain) + 1) : "🗝️ Aller au coffre") + "</button>" : "") +
       '<p id="gps-info" class="gps-info"' + (info ? "" : " hidden") + ">" + esc(info) + "</p>" +
       '<button id="btn-gps" class="btn second" data-action="gps"' + (gps.suivi !== null ? " hidden" : "") + ">📍 Afficher notre position sur la carte</button>" +
       (nonVerifies ? '<span class="fictif">⚠ Lieux repérés sur la carte, à vérifier sur place</span>' : "") +
-      '<p class="legende-plan">' + nbFinies() + " cachette(s) sur " + JEU.etapes.length + " trouvée(s). Glissez pour déplacer la carte, pincez pour zoomer.</p>" +
+      '<p class="legende-plan">' + nbFinies() + " cachette(s) sur " + JEU.etapes.length + " trouvée(s).</p>" +
       "</section>";
   };
 
@@ -508,12 +472,22 @@
 
     if (st.phase === "chercher") {
       if (st.arrive) {
-        h += blocArrivee(d.lieu.indice) + '<button class="btn gros" data-action="trouve">✋ On a trouvé la cachette !</button>';
+        h += JEU.objetsPhysiques
+          ? blocArrivee(d.lieu.indice) + '<button class="btn gros" data-action="trouve">✋ On a trouvé la cachette !</button>'
+          : blocArrivee("La sorcière a laissé quelque chose de magique ici…") + '<button class="btn gros" data-action="trouve">✨ Voir ce que la sorcière a laissé</button>';
       } else {
         h += '<div class="carte-bloc"><p class="etiquette-etape">Où aller ?</p><div class="ligne" style="justify-content:space-between;flex-wrap:nowrap"><p style="font-size:1.25rem">' + esc(d.lieu.indice) + "</p>" + boutonVoix(d.lieu.indice) + "</div></div>" +
           radarHTML(d.lieu) + miniPlan(d.lieu, d.emoji) + blocVerrou() +
           (d.lieu.verifie ? "" : '<span class="fictif">⚠ ' + esc(d.lieu.nom) + " : lieu repéré sur la carte, à vérifier</span>");
       }
+    }
+    else if (st.phase === "petits" && d.apparition && !JEU.objetsPhysiques && !apparitionVue[d.id]) {
+      var A = d.apparition;
+      h += '<div class="apparition pile centre"><p class="age">Regardez bien… ça va disparaître !</p>' +
+        (A.couleur ? '<span class="apparition-boite" style="background:' + A.couleur + '" aria-hidden="true">' + A.emoji + "</span>" : '<span class="apparition-emoji" aria-hidden="true">' + A.emoji + "</span>") +
+        '<div class="ligne" style="justify-content:center;flex-wrap:nowrap"><p style="font-size:1.3rem;font-weight:600">' + esc(A.texte) + "</p>" + boutonVoix(d.recit + " " + A.texte) + "</div></div>" +
+        '<button class="btn gros" data-action="apparition-vue">👀 On a bien regardé !</button>';
+      minuterieApparition(d.id);
     }
     else if (st.phase === "petits") {
       var P = d.petits, contenuChoix;
@@ -521,7 +495,8 @@
       else if (P.compter) contenuChoix = P.compter.options.map(function (n, i) { return '<button class="choix" data-choix="' + i + '" aria-label="' + n + '"><span class="compte">' + new Array(n + 1).join(P.compter.emoji) + "</span></button>"; }).join("");
       else contenuChoix = P.choix.map(function (c, i) { return '<button class="choix" data-choix="' + i + '">' + c + "</button>"; }).join("");
       h += '<div class="parchemin"><p class="age">Épreuve des petits · 2-6 ans</p><div class="ligne" style="justify-content:space-between;flex-wrap:nowrap"><h3>' + esc(P.question) + "</h3>" + boutonVoix(d.recit + " " + P.question) + "</div>" +
-        '<p class="petit">' + esc(d.recit) + '</p><div class="choix-grille">' + contenuChoix + '</div><p class="retour" id="retour" aria-live="polite"></p></div>';
+        '<p class="petit">' + esc(d.recit) + '</p><div class="choix-grille">' + contenuChoix + '</div><p class="retour" id="retour" aria-live="polite"></p>' +
+        (d.apparition && !JEU.objetsPhysiques ? '<button class="btn second" data-action="revoir">👀 Revoir</button>' : "") + "</div>";
     }
     else if (st.phase === "moyens") {
       var M = d.moyens;
@@ -536,7 +511,7 @@
       h += '<div class="parchemin"><p class="age">Épreuve des grands · 11-14 ans</p><div class="ligne" style="justify-content:space-between;flex-wrap:nowrap"><h3>Le message codé</h3>' + boutonVoix(G.question) + "</div>" +
         "<p>" + esc(G.question) + "</p>" +
         (G.grille ? '<div class="defile"><table class="tableau" style="color:inherit"><tr>' + G.grille.map(function (c) { return '<td style="font-size:1.6rem;text-align:center">' + c[0] + "</td>"; }).join("") + "</tr><tr>" + G.grille.map(function (c) { return '<td style="text-align:center;font-weight:700">' + c[1] + "</td>"; }).join("") + "</tr></table></div>" : "") +
-        '<p class="petit">Le message se trouve sur ce que vous avez découvert dans la cachette.</p>' +
+        (JEU.objetsPhysiques ? '<p class="petit">Le message se trouve sur ce que vous avez découvert dans la cachette.</p>' : '<p class="age">Le message de la sorcière</p><p class="message-code">' + esc(G.code) + "</p>") +
         '<form class="pile" data-form="grands"><label for="rep-grands" class="petit">Le mot décodé</label>' +
         '<input id="rep-grands" class="saisie" autocomplete="off" autocapitalize="characters" spellcheck="false">' +
         '<button class="btn" type="submit">Déchiffrer</button></form><p class="retour" id="retour" aria-live="polite"></p>' +
@@ -546,7 +521,7 @@
       var mot = JEU.formule[d.id - 1];
       h += '<div class="carte-bloc recompense pile"><p class="doux">Un morceau de la formule apparaît…</p><p class="mot-gagne">' + esc(mot) + "</p>" +
         (d.chiffre ? '<p>Et un chiffre du cadenas : le <b>' + d.chiffre.position + (d.chiffre.position === 1 ? "er" : "e") + "</b> chiffre est <b style=\"font-size:1.6rem;color:var(--flamme)\">" + esc(d.chiffre.valeur) + "</b></p>" : "") +
-        '<p class="doux petit">Laissez la cachette en place pour les autres équipes.</p></div>' +
+        (JEU.objetsPhysiques ? '<p class="doux petit">Laissez la cachette en place pour les autres équipes.</p>' : "") + "</div>" +
         '<button class="btn" data-action="ranger">Ranger dans le sac et continuer</button>';
     }
     return h + "</section>";
@@ -583,11 +558,11 @@
     if (!S.codeOuvert) {
       var aff = "";
       for (var i = 0; i < JEU.codeCadenas.length; i++) aff += "<span>" + (saisieCode[i] || "") + "</span>";
-      h += "<h3>Le cadenas</h3><p class=\"doux\">Tapez les chiffres trouvés dans l'ordre. Ensuite, tournez les molettes du vrai cadenas.</p>" +
+      h += "<h3>Le cadenas du coffre</h3><p class=\"doux\">Tapez les 4 chiffres trouvés, dans l'ordre (regardez dans 🎒 Mon sac)." + (JEU.objetsPhysiques ? " Ensuite, tournez les molettes du vrai cadenas." : "") + "</p>" +
         '<div class="affiche-code" aria-live="polite">' + aff + '</div><p class="retour" id="retour"></p><div class="clavier">' +
         ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "✓"].map(function (k) { return '<button data-touche="' + k + '" aria-label="' + (k === "⌫" ? "Effacer" : k === "✓" ? "Valider" : k) + '">' + k + "</button>"; }).join("") + "</div>";
     } else {
-      h += '<div class="carte-bloc centre pile"><p style="font-size:1.2rem">Le cadenas s\'ouvre… Tous ensemble, criez la formule !</p><button class="btn" data-action="victoire">Nous avons crié la formule ! 📣</button></div>';
+      h += '<div class="carte-bloc centre pile"><span class="apparition-emoji" aria-hidden="true">🧰</span><p style="font-size:1.2rem">Le coffre magique s\'ouvre… Tous ensemble, criez la formule !</p><button class="btn" data-action="victoire">Nous avons crié la formule ! 📣</button></div>';
     }
     return h + "</section>";
   };
@@ -637,7 +612,8 @@
       '<button class="btn second" data-action="changer-equipe">Changer d\'équipe</button></div>' +
       '<div class="carte-bloc"><h3>Réponses</h3><div class="defile"><table class="tableau"><tr><th>Cachette</th><th>Petits</th><th>Moyens</th><th>Grands</th><th>Cadenas</th></tr>' + reponses + "</table></div>" +
       "<p>Code du cadenas : <b>" + esc(JEU.codeCadenas) + "</b> · Formule : <b>" + esc(JEU.formuleAffichee) + "</b></p></div>" +
-      '<div class="carte-bloc"><h3>À cacher avant la partie</h3><ul class="pile" style="padding-left:20px;margin:0">' + objets + "</ul></div>" +
+      (JEU.objetsPhysiques ? '<div class="carte-bloc"><h3>À cacher avant la partie</h3><ul class="pile" style="padding-left:20px;margin:0">' + objets + "</ul></div>" : '<div class="carte-bloc"><h3>Rien à cacher</h3><p>Tout apparaît sur le téléphone à l\'arrivée. Pour la version avec objets cachés, mettez <code>objetsPhysiques: true</code> dans data.js.</p></div>') +
+      '<div class="carte-bloc"><h3>Partager le jeu</h3><button class="btn second" data-aller="partage">📱 Afficher le QR code</button></div>' +
       '<div class="carte-bloc"><h3>Préparation</h3><button class="btn second" data-aller="verif">Contrôle mode avion</button>';
     if (!confirmeReset) h += '<button class="btn danger" data-action="reset">Réinitialiser la partie</button>';
     else h += '<p><b>Effacer toute la progression de ce téléphone ?</b> Cette action ne peut pas être annulée.</p><div class="ligne" style="flex-wrap:nowrap"><button class="btn danger" data-action="reset-ok">Oui, effacer</button><button class="btn second" data-action="reset-non">Annuler</button></div>';
@@ -722,7 +698,8 @@
         '<li><span class="num">3</span><span>Ouvrez le jeu avec l\'icône <b>🎃 Malédiction</b> sur l\'écran d\'accueil.</span></li></ol>' +
         '<p class="doux petit">Déjà installé ? Ouvrez-le simplement depuis l\'icône.' + (estAndroid ? "" : " Sur ordinateur, utilisez Chrome ou Edge.") + "</p>";
     }
-    h += '<button class="btn discret" data-action="apercu">Organisateur : tester dans le navigateur</button></section>';
+    h += '<button class="btn second" data-aller="partage">📱 Montrer le QR code à un autre téléphone</button>' +
+      '<button class="btn discret" data-action="apercu">Organisateur : tester dans le navigateur</button></section>';
     return h;
   };
 
@@ -750,9 +727,9 @@
   /* Rendu + événements                                                 */
   /* ------------------------------------------------------------------ */
   function rendre() {
-    if (S.ecran !== "accueil" && S.ecran !== "intro" && S.ecran !== "equipes" && S.ecran !== "verif" && S.ecran !== "pin" && S.ecran !== "orga" && !S.equipe) S.ecran = "accueil";
+    if (S.ecran !== "accueil" && S.ecran !== "intro" && S.ecran !== "equipes" && S.ecran !== "verif" && S.ecran !== "pin" && S.ecran !== "orga" && S.ecran !== "partage" && !S.equipe) S.ecran = "accueil";
     if (S.victoire && S.ecran === "final") S.ecran = "victoire";
-    var libre = { pin: 1, orga: 1, verif: 1 };
+    var libre = { pin: 1, orga: 1, verif: 1, partage: 1 };
     var v = (!estInstalle() && !apercuAutorise() && !libre[S.ecran]) ? vues.installer : (vues[S.ecran] || vues.accueil);
     app.innerHTML = v();
     rendreNav();
@@ -861,6 +838,12 @@
       case "son": S.son = !S.son; sauver(); rendre(); if (S.son) son.bon(); break;
       case "gps": carte.suivre = true; lancerGPS(); break;
       case "trouve": valider("petits"); break;
+      case "apparition-vue": clearTimeout(minuterie); apparitionVue[S.courant] = true; rendre(); break;
+      case "revoir": apparitionVue[S.courant] = false; rendre(); break;
+      case "aller-prochaine":
+        var pr = prochaineEtape();
+        if (pr) { S.courant = pr; etape(pr); aller("etape"); } else if (nbFinies() === JEU.etapes.length) aller("final");
+        break;
       case "ranger":
         var st2 = etape(S.courant); st2.fini = true; st2.heure = Date.now(); st2.phase = "fini";
         var finiTout = nbFinies() === JEU.etapes.length; S.courant = null; sauver(); son.tresor();

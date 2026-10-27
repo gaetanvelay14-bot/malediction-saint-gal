@@ -2,7 +2,7 @@
    Utilisée par sw.js ET par l'écran « Prêt pour le mode avion ».
    Si tu ajoutes une image (carte.jpg, sons…), ajoute son nom ici,
    puis change VERSION_CACHE pour forcer la mise à jour sur les téléphones. */
-var VERSION_CACHE = "malediction-v3";
+var VERSION_CACHE = "malediction-v4";
 var FICHIERS = [
   "./",
   "index.html",
@@ -13,6 +13,7 @@ var FICHIERS = [
   "app.js",
   "manifest.webmanifest",
   "icone.svg",
+  "qr.svg",
   "icone-192.png",
   "icone-512.png"
 ];
