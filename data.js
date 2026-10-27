@@ -14,7 +14,7 @@
 
 const JEU = {
   titre: "La Malédiction de Saint-Gal",
-  version: "2.0",
+  version: "3.0",
 
   // Code pour ouvrir le mode organisateur (à changer et à garder secret)
   codeOrganisateur: "1031",

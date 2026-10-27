@@ -178,11 +178,78 @@
     var l = lieuSuivant();
     return (l ? (l === JEU.final.lieu ? "Le coffre : " : "Prochaine cachette : ") + texteDistance(l) + " · " : "") + "précision ± " + Math.round(gps.pos.precision) + " m";
   }
-  function verifierArrivee() {
-    var l = lieuSuivant(); if (!l || !gps.pos || l.lat == null) return;
-    var cle = l.nom, d = distance(gps.pos, l), r = JEU.carte.rayonArrivee || 15;
-    if (d <= r && !gps.annonce[cle]) { gps.annonce[cle] = true; toast("👀 Vous êtes tout près ! Cherchez bien…"); son.fantome(); vibrer([200, 100, 200]); }
+  /* ----- Arrivée à une cachette : l'énigme ne s'ouvre que sur place ----- */
+  function seuilArrivee() { return (JEU.carte.rayonArrivee || 15) + (gps.pos ? Math.min(gps.pos.precision, 15) : 0); }
+  function estArrive(lieu) { return !!(gps.pos && distance(gps.pos, lieu) <= seuilArrivee()); }
+  function temperature(d) {
+    if (d <= seuilArrivee()) return { e: "🎃", t: "Vous y êtes !", c: "arrive" };
+    if (d <= 30) return { e: "🔥", t: "Brûlant !", c: "brulant" };
+    if (d <= 60) return { e: "🌡️", t: "Chaud", c: "chaud" };
+    if (d <= 120) return { e: "❄️", t: "Froid", c: "froid" };
+    return { e: "🥶", t: "Glacé", c: "glace" };
   }
+  var derniereDistance = null;
+  function radarHTML(lieu) {
+    return '<div class="radar" id="radar" data-lat="' + lieu.lat + '" data-lng="' + lieu.lng + '">' +
+      '<span class="radar-emoji" id="radar-emoji" aria-hidden="true">📍</span>' +
+      '<p class="radar-texte" id="radar-texte">Activez le GPS</p>' +
+      '<p class="radar-dist" id="radar-dist"></p><p class="radar-tendance" id="radar-tendance"></p>' +
+      '<button class="btn" id="radar-gps" data-action="gps">📍 Activer le GPS</button></div>';
+  }
+  function majRadar() {
+    var r = document.getElementById("radar"); if (!r) return;
+    var lieu = { lat: +r.dataset.lat, lng: +r.dataset.lng };
+    var em = document.getElementById("radar-emoji"), tx = document.getElementById("radar-texte"), di = document.getElementById("radar-dist"), te = document.getElementById("radar-tendance"), bt = document.getElementById("radar-gps");
+    bt.hidden = gps.suivi !== null;
+    if (gps.erreur) { r.className = "radar"; em.textContent = "📡"; tx.textContent = "Pas de GPS"; di.textContent = gps.erreur; te.textContent = ""; return; }
+    if (gps.suivi === null) { r.className = "radar"; em.textContent = "📍"; tx.textContent = "Activez le GPS"; di.textContent = "Pour savoir si vous êtes près de la cachette."; te.textContent = ""; return; }
+    if (!gps.pos) { r.className = "radar"; em.textContent = "🛰️"; tx.textContent = "Recherche…"; di.textContent = "Restez dehors quelques secondes."; te.textContent = ""; return; }
+    var d = distance(gps.pos, lieu), T = temperature(d);
+    r.className = "radar " + T.c; em.textContent = T.e; tx.textContent = T.t;
+    di.textContent = d <= seuilArrivee() ? "" : "encore ≈ " + Math.round(d) + " m";
+    if (derniereDistance !== null && Math.abs(d - derniereDistance) >= 3) { te.textContent = d < derniereDistance ? "👍 Vous vous rapprochez !" : "↩️ Vous vous éloignez…"; derniereDistance = d; }
+    else if (derniereDistance === null) derniereDistance = d;
+  }
+  function verifierArrivee() {
+    if (!S.equipe || !gps.pos) return;
+    var p = prochaineEtape();
+    if (p) {
+      var st = etape(p), lieu = donneesEtape(p).lieu;
+      if (st.phase === "chercher" && !st.arrive && estArrive(lieu)) {
+        st.arrive = true; S.courant = p; sauver(); celebrerArrivee();
+        if (S.ecran === "carte" || S.ecran === "etape" || S.ecran === "inventaire") aller("etape");
+      }
+    } else if (nbFinies() === JEU.etapes.length && !S.coffreArrive && estArrive(JEU.final.lieu)) {
+      S.coffreArrive = true; sauver(); celebrerArrivee();
+      if (S.ecran === "carte" || S.ecran === "final" || S.ecran === "inventaire") aller("final");
+    }
+  }
+  function celebrerArrivee() {
+    son.tresor(); vibrer([300, 120, 300, 120, 500]);
+    setTimeout(function () { if (S.son) parler("Vous êtes arrivés ! Cherchez bien autour de vous."); }, 700);
+  }
+  function blocArrivee(texte) {
+    return '<div class="arrivee pile centre"><span class="arrivee-emoji" aria-hidden="true">🎃</span><h2>Vous êtes arrivés !</h2>' +
+      '<div class="ligne" style="justify-content:center;flex-wrap:nowrap"><p style="font-size:1.2rem">' + esc(texte) + "</p>" + boutonVoix("Vous êtes arrivés ! " + texte) + "</div></div>";
+  }
+  function blocVerrou() {
+    return '<button class="btn verrouille" disabled>🔒 Approchez-vous pour débloquer</button>' +
+      '<button class="btn discret" data-action="debloquer-adulte">GPS en panne ? Un adulte peut débloquer</button>';
+  }
+  function miniPlan(lieu, emoji) {
+    return '<div class="plan plan-mini" id="plan">' +
+      '<svg id="plan-svg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" aria-label="Carte">' + fondCarte() + "</svg>" +
+      '<span id="gps-halo" class="gps-halo" hidden></span><span id="gps-point" class="gps-point" hidden></span>' +
+      '<span class="repere prochain cible" data-mx="' + lieu.x + '" data-my="' + lieu.y + '" aria-hidden="true">' + emoji + "</span>" +
+      '<div class="outils-carte"><button data-carte="plus" aria-label="Zoomer">＋</button><button data-carte="moins" aria-label="Dézoomer">−</button><button data-carte="moi" aria-label="Me suivre">📍</button></div>' +
+      '<span class="attribution">' + esc(JEU.carte.attribution) + "</span></div>";
+  }
+  function vueCible(lieu) {
+    var w = 160, cx = lieu.x, cy = lieu.y;
+    if (gps.pos && dansLeVillage()) { var m = versCarte(gps.pos.lat, gps.pos.lng); w = Math.max(160, Math.abs(m[0] - lieu.x) * 2 + 80, Math.abs(m[1] - lieu.y) * 2 / ratioPlan() + 80); cx = (m[0] + lieu.x) / 2; cy = (m[1] + lieu.y) / 2; }
+    var r = ratioPlan(); return bornerVue({ x: cx - w / 2, y: cy - w * r / 2, w: w });
+  }
+
   function majGPS() {
     var el = document.getElementById("gps-texte");
     if (el && S.courant) el.textContent = texteGPS(donneesEtape(S.courant).lieu);
@@ -190,13 +257,16 @@
     if (info) { var t = texteInfoCarte(); info.textContent = t; info.hidden = !t; }
     var bouton = document.getElementById("btn-gps");
     if (bouton) bouton.hidden = gps.suivi !== null;
+    majRadar();
+    var mini = document.querySelector(".plan-mini .cible");
+    if (mini && carte.cadrage && gps.pos) { carte.vue = vueCible({ x: +mini.dataset.mx, y: +mini.dataset.my }); appliquerVue(); }
     placerSurCarte();
   }
 
   /* ------------------------------------------------------------------ */
   /* Carte réelle de Saint-Gal (OpenStreetMap, stockée hors ligne)      */
   /* ------------------------------------------------------------------ */
-  var carte = { vue: null, suivre: false, glisse: false };
+  var carte = { vue: null, suivre: false, glisse: false, cadrage: true };
   var CARTE_SVG = null;
   function chemin(pts, ferme) { return "M" + pts.map(function (p) { return p[0] + " " + p[1]; }).join("L") + (ferme ? "Z" : ""); }
   function fondCarte() {
@@ -303,12 +373,12 @@
         var a = pts[ids[0]], b = pts[ids[1]], d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
         var nw = Math.max(70, Math.min(CARTE_SG.vueMax[2], pince.vue.w * pince.d / d)), k = nw / pince.vue.w;
         carte.vue.w = nw; carte.vue.x = pince.mx - (pince.mx - pince.vue.x) * k; carte.vue.y = pince.my - (pince.my - pince.vue.y) * k;
-        carte.suivre = false; bornerVue(carte.vue); appliquerVue(); return;
+        carte.suivre = false; carte.cadrage = false; bornerVue(carte.vue); appliquerVue(); return;
       }
       if (!depart) return;
       var dx = e.clientX - depart.x, dy = e.clientY - depart.y;
       if (!carte.glisse && Math.hypot(dx, dy) < 8) return;
-      carte.glisse = true; carte.suivre = false;
+      carte.glisse = true; carte.suivre = false; carte.cadrage = false;
       var m = versMetres(dx, dy); carte.vue.x = depart.vx - m[0]; carte.vue.y = depart.vy - m[1]; bornerVue(carte.vue); appliquerVue();
     });
     function fin(e) {
@@ -322,7 +392,7 @@
     plan.addEventListener("wheel", function (e) {
       e.preventDefault(); var r = plan.getBoundingClientRect();
       var mx = carte.vue.x + (e.clientX - r.left) / r.width * carte.vue.w, my = carte.vue.y + (e.clientY - r.top) / r.height * carte.vue.h;
-      carte.suivre = false; zoomer(e.deltaY > 0 ? 1.15 : 1 / 1.15, mx, my);
+      carte.suivre = false; carte.cadrage = false; zoomer(e.deltaY > 0 ? 1.15 : 1 / 1.15, mx, my);
     }, { passive: false });
   }
 
@@ -437,13 +507,13 @@
       '<div class="ligne"><span style="font-size:2.4rem" aria-hidden="true">' + d.emoji + '</span><div><p class="doux petit">Cachette n°' + num + "</p><h2>" + esc(d.nom) + "</h2></div></div>" + progresEtape(st.phase);
 
     if (st.phase === "chercher") {
-      var g = texteGPS(d.lieu);
-      h += (d.lieu.verifie ? "" : '<span class="fictif">⚠ ' + esc(d.lieu.nom) + " : lieu repéré sur la carte, à vérifier</span>") +
-        '<div class="carte-bloc"><div class="ligne" style="justify-content:space-between;flex-wrap:nowrap"><p style="font-size:1.2rem">' + esc(d.lieu.indice) + "</p>" + boutonVoix(d.lieu.indice) + "</div>" +
-        (d.lieu.lat != null ? '<p id="gps-texte" class="gps-info">' + esc(g) + "</p>" + (gps.suivi === null ? '<button class="btn second" data-action="gps">📍 Activer le GPS</button>' : "") : "") + '<button class="btn second" data-aller="carte">🗺️ Voir sur la carte</button>' +
-        "</div>" +
-        '<p class="doux">Les petits ouvrent grand les yeux, les grands surveillent la route. Ne touchez pas à ce qui n\'est pas à vous.</p>' +
-        '<button class="btn" data-action="trouve">On a trouvé la cachette !</button>';
+      if (st.arrive) {
+        h += blocArrivee(d.lieu.indice) + '<button class="btn gros" data-action="trouve">✋ On a trouvé la cachette !</button>';
+      } else {
+        h += '<div class="carte-bloc"><p class="etiquette-etape">Où aller ?</p><div class="ligne" style="justify-content:space-between;flex-wrap:nowrap"><p style="font-size:1.25rem">' + esc(d.lieu.indice) + "</p>" + boutonVoix(d.lieu.indice) + "</div></div>" +
+          radarHTML(d.lieu) + miniPlan(d.lieu, d.emoji) + blocVerrou() +
+          (d.lieu.verifie ? "" : '<span class="fictif">⚠ ' + esc(d.lieu.nom) + " : lieu repéré sur la carte, à vérifier</span>");
+      }
     }
     else if (st.phase === "petits") {
       var P = d.petits, contenuChoix;
@@ -506,6 +576,10 @@
       '<div class="parchemin"><p class="age">La formule complète</p><p style="font-family:var(--f-titre);font-size:1.9rem;line-height:1.15;color:#7a2e0e">' + esc(JEU.formuleAffichee) + "</p>" + boutonVoix(JEU.formuleAffichee) + "</div>" +
       (F.lieu.verifie ? "" : '<span class="fictif">⚠ ' + esc(F.lieu.nom) + " : lieu repéré sur la carte, à vérifier</span>") +
       '<div class="carte-bloc"><div class="ligne" style="justify-content:space-between;flex-wrap:nowrap"><p style="font-size:1.15rem">' + esc(F.lieu.indice) + " " + esc(F.texte) + "</p>" + boutonVoix(F.lieu.indice + " " + F.texte) + "</div></div>";
+    if (!S.coffreArrive) {
+      return h + radarHTML(F.lieu) + miniPlan(F.lieu, "🗝️") + blocVerrou() + "</section>";
+    }
+    h += blocArrivee("Le coffre est ici. Tapez le code du cadenas.");
     if (!S.codeOuvert) {
       var aff = "";
       for (var i = 0; i < JEU.codeCadenas.length; i++) aff += "<span>" + (saisieCode[i] || "") + "</span>";
@@ -528,10 +602,12 @@
   };
 
   /* ----- Organisateur ----- */
-  var pinSaisi = "", orgOuvert = false, confirmeReset = false;
+  var pinSaisi = "", orgOuvert = false, confirmeReset = false, pinMode = "orga", pinRetour = "carte";
   vues.pin = function () {
     var aff = ""; for (var i = 0; i < JEU.codeOrganisateur.length; i++) aff += "<span>" + (pinSaisi[i] ? "•" : "") + "</span>";
-    return '<section class="pile"><h2>Mode organisateur</h2><p class="doux">Réservé aux adultes. Tapez le code organisateur.</p>' +
+    var titre = pinMode === "debloquer" ? "Déblocage par un adulte" : "Mode organisateur";
+    var texte = pinMode === "debloquer" ? "Le GPS ne marche pas ? Si vous êtes bien à la cachette, un adulte tape le code organisateur pour débloquer l'épreuve." : "Réservé aux adultes. Tapez le code organisateur.";
+    return '<section class="pile"><h2>' + titre + '</h2><p class="doux">' + texte + "</p>" +
       '<div class="affiche-code">' + aff + '</div><p class="retour ko" id="retour"></p><div class="clavier">' +
       ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "✓"].map(function (k) { return '<button data-pin="' + k + '" aria-label="' + (k === "⌫" ? "Effacer" : k === "✓" ? "Valider" : k) + '">' + k + "</button>"; }).join("") + "</div>" +
       '<button class="btn discret" data-action="retour-jeu">Retour</button></section>';
@@ -557,7 +633,7 @@
       '<p class="doux petit">La progression est enregistrée sur ce téléphone uniquement. Pour suivre les 3 équipes, regardez chaque téléphone.</p>' +
       '<div class="defile"><table class="tableau"><tr><th>Cachette</th><th>État</th><th>Indices</th><th>Finie à</th></tr>' + lignes + "</table></div></div>" +
       '<div class="carte-bloc"><h3>Débloquer</h3>' +
-      (S.courant && !etape(S.courant).fini ? '<button class="btn" data-action="passer">Valider l\'épreuve en cours (' + esc(etape(S.courant).phase) + ")</button>" : '<p class="doux">Aucune épreuve en cours.</p>') +
+      (S.courant && !etape(S.courant).fini ? '<button class="btn" data-action="passer">' + (etape(S.courant).phase === "chercher" && !etape(S.courant).arrive ? "Débloquer l\'arrivée à la cachette (sans GPS)" : "Valider l\'épreuve en cours (" + esc(etape(S.courant).phase) + ")") + "</button>" : (nbFinies() === JEU.etapes.length && !S.coffreArrive ? '<button class="btn" data-action="ouvrir-coffre">Débloquer l\'arrivée au coffre (sans GPS)</button>' : '<p class="doux">Aucune épreuve en cours.</p>')) +
       '<button class="btn second" data-action="changer-equipe">Changer d\'équipe</button></div>' +
       '<div class="carte-bloc"><h3>Réponses</h3><div class="defile"><table class="tableau"><tr><th>Cachette</th><th>Petits</th><th>Moyens</th><th>Grands</th><th>Cadenas</th></tr>' + reponses + "</table></div>" +
       "<p>Code du cadenas : <b>" + esc(JEU.codeCadenas) + "</b> · Formule : <b>" + esc(JEU.formuleAffichee) + "</b></p></div>" +
@@ -610,15 +686,80 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* Installation obligatoire sur le téléphone + protection anti-erreur */
+  /* ------------------------------------------------------------------ */
+  var promptInstall = null, installAccepte = false;
+  function estInstalle() {
+    try { return window.matchMedia("(display-mode: standalone)").matches || window.matchMedia("(display-mode: fullscreen)").matches || window.navigator.standalone === true; } catch (e) { return false; }
+  }
+  function apercuAutorise() { if (window.APERCU_CLAUDE) return true; try { return sessionStorage.getItem("apercu-orga") === "1"; } catch (e) { return false; } }
+  window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); promptInstall = e; if (!estInstalle()) rendre(); });
+  window.addEventListener("appinstalled", function () { installAccepte = true; rendre(); });
+  var ua = navigator.userAgent || "";
+  var estIOS = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  var estAndroid = /Android/i.test(ua);
+  var estSafari = estIOS && !/CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua);
+
+  vues.installer = function () {
+    var h = '<section class="pile installer"><div class="citrouille-anim" aria-hidden="true">📲</div><h1>Installez le jeu</h1>' +
+      '<p style="font-size:1.15rem">Pour jouer sans Internet et sans quitter le jeu par erreur, il faut d\'abord l\'installer sur ce téléphone. Ça prend 20 secondes.</p>';
+    if (installAccepte) {
+      h += '<div class="carte-bloc pile"><h3>C\'est installé ! 🎉</h3><p style="font-size:1.15rem">Fermez cette page, puis ouvrez le jeu avec l\'icône <b>🎃 Malédiction</b> sur l\'écran d\'accueil du téléphone.</p></div>';
+    } else if (estIOS && !estSafari) {
+      h += '<div class="carte-bloc pile"><h3>Ouvrez ce lien dans Safari</h3><p>Sur iPhone, l\'installation se fait depuis <b>Safari</b>. Copiez l\'adresse de cette page, collez-la dans Safari, puis suivez les étapes.</p><p class="adresse">' + esc(location.href.split("#")[0]) + "</p></div>";
+    } else if (estIOS) {
+      h += '<ol class="etapes-install">' +
+        '<li><span class="num">1</span><span>Touchez le bouton <b>Partager</b> <span class="pictos">⬆️</span> (le carré avec une flèche, en bas ou en haut de l\'écran).</span></li>' +
+        '<li><span class="num">2</span><span>Faites défiler et touchez <b>« Sur l\'écran d\'accueil »</b> <span class="pictos">➕</span>.</span></li>' +
+        '<li><span class="num">3</span><span>Touchez <b>« Ajouter »</b> en haut à droite.</span></li>' +
+        '<li><span class="num">4</span><span>Fermez Safari et ouvrez le jeu avec l\'icône <b>🎃 Malédiction</b>.</span></li></ol>';
+    } else if (promptInstall) {
+      h += '<button class="btn gros" data-action="installer">📲 Installer le jeu</button><p class="doux">Puis ouvrez le jeu avec l\'icône <b>🎃 Malédiction</b> sur l\'écran d\'accueil.</p>';
+    } else {
+      h += '<ol class="etapes-install">' +
+        '<li><span class="num">1</span><span>Touchez le menu <b>⋮</b> en haut à droite de Chrome.</span></li>' +
+        '<li><span class="num">2</span><span>Touchez <b>« Installer l\'application »</b> ou <b>« Ajouter à l\'écran d\'accueil »</b>.</span></li>' +
+        '<li><span class="num">3</span><span>Ouvrez le jeu avec l\'icône <b>🎃 Malédiction</b> sur l\'écran d\'accueil.</span></li></ol>' +
+        '<p class="doux petit">Déjà installé ? Ouvrez-le simplement depuis l\'icône.' + (estAndroid ? "" : " Sur ordinateur, utilisez Chrome ou Edge.") + "</p>";
+    }
+    h += '<button class="btn discret" data-action="apercu">Organisateur : tester dans le navigateur</button></section>';
+    return h;
+  };
+
+  // Une fois installé : pas de retour arrière ni d'actualisation par erreur
+  function protegerNavigation() {
+    try {
+      history.pushState({ jeu: 1 }, "", location.href);
+      window.addEventListener("popstate", function () {
+        history.pushState({ jeu: 1 }, "", location.href);
+        if (S.ecran === "etape" || S.ecran === "inventaire" || S.ecran === "final") aller("carte");
+        else if (S.ecran === "pin" || S.ecran === "verif") aller(S.equipe ? "carte" : "accueil");
+        else toast("Le jeu reste ouvert 🎃");
+      });
+    } catch (e) {}
+    window.addEventListener("beforeunload", function (e) { if (S.equipe && !S.victoire) { e.preventDefault(); e.returnValue = ""; } });
+  }
+  // Garder l'écran allumé pendant la partie (si le téléphone l'accepte)
+  var verrouEcran = null;
+  function garderEcranAllume() {
+    try { if (navigator.wakeLock && document.visibilityState === "visible" && !verrouEcran) navigator.wakeLock.request("screen").then(function (w) { verrouEcran = w; w.addEventListener("release", function () { verrouEcran = null; }); }).catch(function () {}); } catch (e) {}
+  }
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") { garderEcranAllume(); if (gps.suivi === null && S.gps) lancerGPS(); } });
+
+  /* ------------------------------------------------------------------ */
   /* Rendu + événements                                                 */
   /* ------------------------------------------------------------------ */
   function rendre() {
     if (S.ecran !== "accueil" && S.ecran !== "intro" && S.ecran !== "equipes" && S.ecran !== "verif" && S.ecran !== "pin" && S.ecran !== "orga" && !S.equipe) S.ecran = "accueil";
     if (S.victoire && S.ecran === "final") S.ecran = "victoire";
-    var v = vues[S.ecran] || vues.accueil;
+    var libre = { pin: 1, orga: 1, verif: 1 };
+    var v = (!estInstalle() && !apercuAutorise() && !libre[S.ecran]) ? vues.installer : (vues[S.ecran] || vues.accueil);
     app.innerHTML = v();
     rendreNav();
-    brancherCarte();
+    carte.cadrage = true;
+    if (document.querySelector(".plan-mini")) { var cible = document.querySelector(".plan-mini .cible"); carte.vue = null; brancherCarte(); carte.vue = vueCible({ x: +cible.dataset.mx, y: +cible.dataset.my }); appliquerVue(); }
+    else brancherCarte();
+    derniereDistance = null;
     majGPS();
     var champ = app.querySelector(".saisie"); if (champ && !("ontouchstart" in window)) champ.focus();
   }
@@ -641,16 +782,18 @@
 
   document.addEventListener("click", function (ev) {
     var b = ev.target.closest("button"); if (!b) return;
-    audio();
+    audio(); garderEcranAllume();
     if (b.dataset.dire) { parler(b.dataset.dire, b); return; }
     if (b.dataset.carte) {
       var c = b.dataset.carte;
+      if (c === "plus" || c === "moins") carte.cadrage = false;
       if (c === "plus") zoomer(1 / 1.5); else if (c === "moins") zoomer(1.5);
       else if (c === "parcours") { carte.suivre = false; carte.vue = vueParcours(); appliquerVue(); }
       else if (c === "moi") {
         if (gps.suivi === null) { lancerGPS(); toast("Recherche de votre position…"); carte.suivre = true; }
         else if (!gps.pos) toast("Recherche du signal GPS…");
         else if (!dansLeVillage()) toast("Vous êtes en dehors de la carte de Saint-Gal.");
+        else if (document.querySelector(".plan-mini")) { carte.cadrage = true; majGPS(); }
         else { carte.suivre = true; if (carte.vue.w > 260) carte.vue.w = 200; var m = versCarte(gps.pos.lat, gps.pos.lng); centrerSur(m[0], m[1]); }
       }
       placerSurCarte(); return;
@@ -659,7 +802,7 @@
       var cible = b.dataset.aller;
       if (cible === "pin" && orgOuvert) cible = "orga";
       if (cible === "verif") verifs = null;
-      if (cible === "pin") pinSaisi = "";
+      if (cible === "pin") { pinSaisi = ""; pinMode = "orga"; }
       if (cible === "etape" && !S.courant) cible = "carte";
       aller(cible); return;
     }
@@ -700,7 +843,15 @@
       var kp = b.dataset.pin;
       if (kp === "⌫") pinSaisi = pinSaisi.slice(0, -1);
       else if (kp === "✓") {
-        if (pinSaisi === JEU.codeOrganisateur) { orgOuvert = true; pinSaisi = ""; aller("orga"); return; }
+        if (pinSaisi === JEU.codeOrganisateur) {
+          pinSaisi = "";
+          if (pinMode === "debloquer") {
+            if (S.courant && !etape(S.courant).fini) { etape(S.courant).arrive = true; etape(S.courant).aide = true; }
+            else if (nbFinies() === JEU.etapes.length) S.coffreArrive = true;
+            sauver(); pinMode = "orga"; son.tresor(); aller(pinRetour); return;
+          }
+          orgOuvert = true; if (!estInstalle()) { try { sessionStorage.setItem("apercu-orga", "1"); } catch (e) {} } aller("orga"); return;
+        }
         pinSaisi = ""; rendre(); retour("Code incorrect.", false); return;
       } else if (pinSaisi.length < JEU.codeOrganisateur.length) pinSaisi += kp;
       rendre(); return;
@@ -715,17 +866,23 @@
         var finiTout = nbFinies() === JEU.etapes.length; S.courant = null; sauver(); son.tresor();
         aller(finiTout ? "final" : "carte"); if (finiTout) etincelles(); break;
       case "victoire": S.victoire = true; S.fin = S.fin || Date.now(); sauver(); son.victoire(); aller("victoire"); etincelles(); break;
-      case "retour-jeu": aller(S.equipe ? "carte" : "accueil"); break;
+      case "retour-jeu": if (pinMode === "debloquer") { pinMode = "orga"; aller(pinRetour); } else aller(S.equipe ? "carte" : "accueil"); break;
+      case "debloquer-adulte": pinMode = "debloquer"; pinRetour = S.ecran; pinSaisi = ""; aller("pin"); break;
+      case "ouvrir-coffre": S.coffreArrive = true; sauver(); toast("Arrivée au coffre débloquée"); rendre(); break;
+      case "installer":
+        if (promptInstall) { promptInstall.prompt(); promptInstall.userChoice.then(function (c) { if (c && c.outcome === "accepted") { installAccepte = true; } promptInstall = null; rendre(); }).catch(function () { promptInstall = null; rendre(); }); }
+        break;
       case "fermer-orga": orgOuvert = false; confirmeReset = false; aller(S.equipe ? "carte" : "accueil"); break;
       case "passer":
         var st3 = etape(S.courant), ordre = ["chercher", "petits", "moyens", "grands", "recompense"];
-        st3.aide = true; st3.phase = ordre[Math.min(ordre.indexOf(st3.phase) + 1, 4)]; sauver(); toast("Épreuve validée par l'organisateur"); rendre(); break;
+        st3.aide = true; if (st3.phase === "chercher" && !st3.arrive) st3.arrive = true; else st3.phase = ordre[Math.min(ordre.indexOf(st3.phase) + 1, 4)]; sauver(); toast("Épreuve validée par l'organisateur"); rendre(); break;
       case "changer-equipe": S.equipe = null; orgOuvert = false; aller("equipes"); break;
       case "reset": confirmeReset = true; rendre(); break;
       case "reset-non": confirmeReset = false; rendre(); break;
       case "reset-ok":
         var garderSon = S.son, garderGps = S.gps; S = etatVierge(); S.son = garderSon; S.gps = garderGps; gps.annonce = {}; sauver(); confirmeReset = false; orgOuvert = false; toast("Partie réinitialisée"); aller("accueil"); break;
       case "reverif": verifs = null; rendre(); break;
+      case "apercu": pinMode = "orga"; pinSaisi = ""; aller("pin"); break;
     }
   });
 
@@ -748,6 +905,8 @@
   }
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
   if (S.gps) lancerGPS();
+  if (estInstalle()) protegerNavigation();
+  garderEcranAllume();
   if (S.ecran === "pin" || S.ecran === "orga") S.ecran = S.equipe ? "carte" : "accueil";
   rendre();
 })();

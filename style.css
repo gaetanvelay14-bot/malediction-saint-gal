@@ -335,3 +335,47 @@ code { font-size: .95em; background: var(--nuit-2); padding: 1px 6px; border-rad
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Pas de « tirer pour actualiser » */
+html, body { overscroll-behavior-y: none; }
+
+/* Chaud / froid géant pour les petits */
+.etiquette-etape { font-size: .85rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--encre-douce); }
+.radar {
+  border-radius: 24px; padding: 18px 16px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: var(--nuit-2); border: 3px solid var(--brume);
+  transition: background .6s, border-color .6s;
+}
+.radar-emoji { font-size: 5.5rem; line-height: 1.05; }
+.radar-texte { font-family: var(--f-titre); font-size: 2.6rem; line-height: 1; }
+.radar-dist { font-size: 1.25rem; font-weight: 600; }
+.radar-tendance { font-size: 1.15rem; font-weight: 600; min-height: 1.4em; }
+.radar .btn { margin-top: 6px; }
+.radar.glace { background: #1d2b4a; border-color: #5b8ed6; }
+.radar.froid { background: #213654; border-color: #7fb2ec; }
+.radar.chaud { background: #4a2f1a; border-color: #ffb066; }
+.radar.brulant { background: #5a2214; border-color: #ff6a3d; animation: pulse 1s infinite; }
+.radar.brulant .radar-emoji { animation: flotte 1s ease-in-out infinite; }
+.radar.arrive { background: #23401f; border-color: var(--mousse); }
+
+.plan.plan-mini { aspect-ratio: 1 / 1; }
+.repere.cible { font-size: 1.5rem; width: 52px; height: 52px; }
+
+.btn.verrouille { background: #3a3350; color: #9d93b5; box-shadow: none; cursor: not-allowed; }
+.btn.gros { min-height: 84px; font-size: 1.5rem; }
+
+.arrivee {
+  background: #23401f; border: 3px solid var(--mousse); border-radius: 24px; padding: 18px;
+  animation: apparait .5s ease-out;
+}
+.arrivee h2 { color: var(--mousse); }
+.arrivee-emoji { font-size: 4.5rem; line-height: 1; animation: flotte 2s ease-in-out infinite; }
+
+/* Écran d'installation */
+.installer { text-align: center; align-items: center; }
+.etapes-install { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; text-align: left; width: 100%; }
+.etapes-install li { display: flex; gap: 14px; align-items: center; background: var(--nuit-2); border-radius: 16px; padding: 14px; font-size: 1.1rem; }
+.etapes-install .num { flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--flamme); color: #2a1606; display: grid; place-items: center; font-weight: 700; font-size: 1.3rem; }
+.etapes-install .pictos { font-size: 1.3rem; }
+.adresse { background: var(--nuit); border-radius: 10px; padding: 10px; word-break: break-all; font-family: monospace; user-select: all; -webkit-user-select: all; }
