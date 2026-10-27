@@ -120,7 +120,7 @@
   /* ------------------------------------------------------------------ */
   /* GPS en direct (facultatif : le jeu marche sans)                     */
   /* ------------------------------------------------------------------ */
-  var gps = { suivi: null, pos: null, erreur: null, premier: true, annonce: {} };
+  var gps = { suivi: null, pos: null, erreur: null, premier: true, annonce: {}, refuse: false };
   function versCarte(lat, lng) { return [(lng - CARTE_SG.ouest) * CARTE_SG.kx, (CARTE_SG.nord - lat) * CARTE_SG.ky]; }
   function lancerGPS() {
     if (!("geolocation" in navigator)) { gps.erreur = "Ce téléphone ne donne pas sa position. Le jeu marche sans."; majGPS(); return; }
@@ -130,14 +130,15 @@
       gps.suivi = navigator.geolocation.watchPosition(function (p) {
         gps.pos = { lat: p.coords.latitude, lng: p.coords.longitude, precision: p.coords.accuracy };
         gps.erreur = null;
-        if (!S.gps) { S.gps = true; sauver(); }
+        gps.refuse = false;
+        if (!S.gps) { S.gps = true; sauver(); toast("Localisation activée ✅"); rendre(); }
         if (gps.premier) { gps.premier = false; if (dansLeVillage()) { carte.suivre = true; } }
         majGPS(); verifierArrivee();
       }, function (err) {
         gps.erreur = err && err.code === 1
-          ? "Localisation refusée. Autorisez-la dans les réglages du téléphone (Localisation → navigateur), puis rouvrez le jeu."
+          ? "Localisation refusée. Le jeu en a besoin : autorisez-la dans les réglages du téléphone."
           : "Signal GPS introuvable pour l'instant. Restez à découvert quelques secondes. Le jeu marche sans.";
-        if (err && err.code === 1) { gps.suivi = null; S.gps = false; sauver(); }
+        if (err && err.code === 1) { gps.suivi = null; gps.refuse = true; S.gps = false; sauver(); rendre(); return; }
         majGPS();
       }, { enableHighAccuracy: true, maximumAge: 3000, timeout: 30000 });
     } catch (e) { gps.erreur = "GPS indisponible."; gps.suivi = null; }
@@ -500,16 +501,21 @@
     }
     else if (st.phase === "moyens") {
       var M = d.moyens;
-      h += '<div class="parchemin"><p class="age">Épreuve des moyens · 7-10 ans</p><div class="ligne" style="justify-content:space-between;flex-wrap:nowrap"><h3>' + esc(M.question) + "</h3>" + boutonVoix(M.question) + "</div>" +
-        '<form class="pile" data-form="moyens"><label for="rep-moyens" class="petit">Votre réponse</label>' +
-        '<input id="rep-moyens" class="saisie" autocomplete="off" autocapitalize="off" spellcheck="false" ' + (M.type === "nombre" ? 'inputmode="numeric"' : "") + ">" +
-        '<button class="btn" type="submit">Valider</button></form><p class="retour" id="retour" aria-live="polite"></p>' +
-        blocIndices("moyens", M.indices, st.indM) + "</div>";
+      h += '<div class="parchemin"><p class="age">Épreuve des moyens · 7-10 ans</p><div class="ligne" style="justify-content:space-between;flex-wrap:nowrap"><h3>' + esc(M.question) + "</h3>" + boutonVoix(M.question + " " + (M.options || []).join(", ")) + "</div>";
+      if (M.type === "choix") {
+        h += '<div class="reponses">' + M.options.map(function (o, i) { return '<button class="reponse" data-rep-moyens="' + i + '">' + esc(o) + "</button>"; }).join("") + "</div>";
+      } else {
+        h += '<form class="pile" data-form="moyens"><label for="rep-moyens" class="petit">Votre réponse</label>' +
+          '<input id="rep-moyens" class="saisie" autocomplete="off" autocapitalize="off" spellcheck="false" ' + (M.type === "nombre" ? 'inputmode="numeric"' : "") + ">" +
+          '<button class="btn" type="submit">Valider</button></form>';
+      }
+      h += '<p class="retour" id="retour" aria-live="polite"></p>' + blocIndices("moyens", M.indices, st.indM) + "</div>";
     }
     else if (st.phase === "grands") {
       var G = d.grands;
       h += '<div class="parchemin"><p class="age">Épreuve des grands · 11-14 ans</p><div class="ligne" style="justify-content:space-between;flex-wrap:nowrap"><h3>Le message codé</h3>' + boutonVoix(G.question) + "</div>" +
         "<p>" + esc(G.question) + "</p>" +
+        (G.alphabet ? '<div class="alphabet">' + "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map(function (l, i) { return "<span><b>" + l + "</b>" + (i + 1) + "</span>"; }).join("") + "</div>" : "") +
         (G.grille ? '<div class="defile"><table class="tableau" style="color:inherit"><tr>' + G.grille.map(function (c) { return '<td style="font-size:1.6rem;text-align:center">' + c[0] + "</td>"; }).join("") + "</tr><tr>" + G.grille.map(function (c) { return '<td style="text-align:center;font-weight:700">' + c[1] + "</td>"; }).join("") + "</tr></table></div>" : "") +
         (JEU.objetsPhysiques ? '<p class="petit">Le message se trouve sur ce que vous avez découvert dans la cachette.</p>' : '<p class="age">Le message de la sorcière</p><p class="message-code">' + esc(G.code) + "</p>") +
         '<form class="pile" data-form="grands"><label for="rep-grands" class="petit">Le mot décodé</label>' +
@@ -597,7 +603,7 @@
     }).join("");
     var reponses = JEU.etapes.map(function (d) {
       var P = d.petits, bonP = P.couleurs ? P.nomsCouleurs[P.bonne] : P.compter ? String(P.compter.options[P.bonne]) : P.choix[P.bonne];
-      return "<tr><td><b>" + d.id + ". " + esc(d.nom) + "</b><br><span class=\"doux petit\">" + esc(d.lieu.nom) + (d.lieu.verifie ? " ✔ vérifié" : " ⚠ à vérifier") + "</span></td><td>" + esc(bonP) + "</td><td>" + esc(d.moyens.reponses[0]) + "</td><td>" + esc(d.grands.reponses[0]).toUpperCase() + "</td><td>" + (d.chiffre ? d.chiffre.position + "e = " + esc(d.chiffre.valeur) : "—") + "</td></tr>";
+      return "<tr><td><b>" + d.id + ". " + esc(d.nom) + "</b><br><span class=\"doux petit\">" + esc(d.lieu.nom) + (d.lieu.verifie ? " ✔ vérifié" : " ⚠ à vérifier") + "</span></td><td>" + esc(bonP) + "</td><td>" + esc(d.moyens.type === "choix" ? d.moyens.options[d.moyens.bonne] : d.moyens.reponses[0]) + "</td><td>" + esc(d.grands.reponses[0]).toUpperCase() + "</td><td>" + (d.chiffre ? d.chiffre.position + "e = " + esc(d.chiffre.valeur) : "—") + "</td></tr>";
     }).join("");
     var objets = JEU.etapes.map(function (d) {
       return "<li><b>" + d.id + ". " + esc(d.nom) + "</b> (" + esc(d.lieu.nom) + ") : " + esc(d.cachette) + " <i>Contenu :</i> " + esc(d.contenu) + "</li>";
@@ -609,7 +615,8 @@
       '<div class="defile"><table class="tableau"><tr><th>Cachette</th><th>État</th><th>Indices</th><th>Finie à</th></tr>' + lignes + "</table></div></div>" +
       '<div class="carte-bloc"><h3>Débloquer</h3>' +
       (S.courant && !etape(S.courant).fini ? '<button class="btn" data-action="passer">' + (etape(S.courant).phase === "chercher" && !etape(S.courant).arrive ? "Débloquer l\'arrivée à la cachette (sans GPS)" : "Valider l\'épreuve en cours (" + esc(etape(S.courant).phase) + ")") + "</button>" : (nbFinies() === JEU.etapes.length && !S.coffreArrive ? '<button class="btn" data-action="ouvrir-coffre">Débloquer l\'arrivée au coffre (sans GPS)</button>' : '<p class="doux">Aucune épreuve en cours.</p>')) +
-      '<button class="btn second" data-action="changer-equipe">Changer d\'équipe</button></div>' +
+      '<button class="btn second" data-action="changer-equipe">Changer d\'équipe</button>' +
+      '<button class="btn second" data-action="sans-gps">' + (S.sansGps ? "Rendre le GPS obligatoire" : "Dépannage : jouer sans GPS sur ce téléphone") + "</button></div>" +
       '<div class="carte-bloc"><h3>Réponses</h3><div class="defile"><table class="tableau"><tr><th>Cachette</th><th>Petits</th><th>Moyens</th><th>Grands</th><th>Cadenas</th></tr>' + reponses + "</table></div>" +
       "<p>Code du cadenas : <b>" + esc(JEU.codeCadenas) + "</b> · Formule : <b>" + esc(JEU.formuleAffichee) + "</b></p></div>" +
       (JEU.objetsPhysiques ? '<div class="carte-bloc"><h3>À cacher avant la partie</h3><ul class="pile" style="padding-left:20px;margin:0">' + objets + "</ul></div>" : '<div class="carte-bloc"><h3>Rien à cacher</h3><p>Tout apparaît sur le téléphone à l\'arrivée. Pour la version avec objets cachés, mettez <code>objetsPhysiques: true</code> dans data.js.</p></div>') +
@@ -641,7 +648,7 @@
     var voix = ("speechSynthesis" in window);
     res.push({ titre: "Lecture à voix haute", etat: voix && voixFr ? (voixFr.localService ? "ok" : "att") : "att", detail: !voix ? "Pas disponible sur ce téléphone : un adulte lira à voix haute." : voixFr ? (voixFr.localService ? "Voix française installée sur le téléphone." : "Voix française en ligne : elle risque de ne pas marcher en mode avion. Testez-la en mode avion.") : "Aucune voix française trouvée. Testez le bouton 🔊 ; sinon un adulte lira." });
     var gpsDispo = ("geolocation" in navigator) && window.isSecureContext;
-    res.push({ titre: "Position GPS", etat: !gpsDispo ? "ko" : (S.gps ? "ok" : "att"), detail: !gpsDispo ? "Le GPS ne peut pas marcher ici : ouvrez le jeu depuis son adresse https." : (S.gps ? "Localisation autorisée. Le GPS marche aussi en mode avion (sans Internet), dehors, en quelques secondes." : "Pas encore autorisée : sur la carte, touchez « Afficher notre position » et acceptez. Le jeu marche aussi sans.") });
+    res.push({ titre: "Position GPS", etat: !gpsDispo ? "ko" : (S.gps ? "ok" : "att"), detail: !gpsDispo ? "Le GPS ne peut pas marcher ici : ouvrez le jeu depuis son adresse https." : (S.gps ? "Localisation autorisée. Le GPS marche aussi en mode avion (sans Internet), dehors, en quelques secondes." : "Pas encore autorisée : commencez l'aventure, le jeu vous demandera d'autoriser la localisation. Elle est obligatoire pour jouer.") });
     var policesOk = false; try { policesOk = document.fonts && document.fonts.check('20px "Grenze Gotisch"') && document.fonts.check('20px "Fredoka"'); } catch (e) {}
     res.push({ titre: "Polices décoratives", etat: policesOk ? "ok" : "att", detail: policesOk ? "Polices chargées." : "Pas encore chargées : le jeu utilisera une police simple. Sans gravité." });
     if (!swOk) {
@@ -703,6 +710,25 @@
     return h;
   };
 
+
+  vues.localisation = function () {
+    var h = '<section class="pile installer"><div class="citrouille-anim" aria-hidden="true">📍</div><h1>Activez la localisation</h1>' +
+      '<p style="font-size:1.15rem">Le téléphone doit savoir où vous êtes pour ouvrir les énigmes quand vous arrivez aux cachettes. Sans localisation, on ne peut pas jouer.</p>';
+    if (gps.refuse) {
+      h += '<div class="carte-bloc pile" style="text-align:left"><h3>La localisation est bloquée</h3>' +
+        (estIOS
+          ? '<ol class="etapes-install"><li><span class="num">1</span><span>Ouvrez les <b>Réglages</b> de l\'iPhone.</span></li><li><span class="num">2</span><span><b>Confidentialité et sécurité</b> → <b>Service de localisation</b> : activé.</span></li><li><span class="num">3</span><span>Plus bas, touchez <b>Sites web Safari</b> → <b>Lorsque l\'app est active</b>.</span></li><li><span class="num">4</span><span>Revenez ici et touchez <b>Réessayer</b>.</span></li></ol>'
+          : '<ol class="etapes-install"><li><span class="num">1</span><span>Faites un appui long sur l\'icône <b>🎃 Malédiction</b> → <b>Infos sur l\'appli</b> (ou ⓘ).</span></li><li><span class="num">2</span><span><b>Autorisations</b> → <b>Position</b> → <b>Autoriser</b>.</span></li><li><span class="num">3</span><span>Vérifiez que la <b>Localisation</b> du téléphone est activée (menu du haut de l\'écran).</span></li><li><span class="num">4</span><span>Revenez ici et touchez <b>Réessayer</b>.</span></li></ol>') +
+        "</div>" + '<button class="btn gros" data-action="gps">🔄 Réessayer</button>';
+    } else if (gps.suivi !== null) {
+      h += '<div class="radar"><span class="radar-emoji" aria-hidden="true">🛰️</span><p class="radar-texte">Recherche…</p><p class="radar-dist">Si le téléphone demande, touchez <b>Autoriser</b>. Restez dehors quelques secondes.</p></div>';
+    } else {
+      h += '<button class="btn gros" data-action="gps">📍 Autoriser la localisation</button>' +
+        '<p class="doux">Le téléphone va demander : touchez <b>« Autoriser »</b>' + (estIOS ? " (ou « Autoriser lorsque l'app est active »)" : " (ou « Lorsque vous utilisez l'appli »)") + ".</p>";
+    }
+    return h + '<button class="btn discret" data-aller="pin">Organisateur</button></section>';
+  };
+
   // Une fois installé : pas de retour arrière ni d'actualisation par erreur
   function protegerNavigation() {
     try {
@@ -730,7 +756,11 @@
     if (S.ecran !== "accueil" && S.ecran !== "intro" && S.ecran !== "equipes" && S.ecran !== "verif" && S.ecran !== "pin" && S.ecran !== "orga" && S.ecran !== "partage" && !S.equipe) S.ecran = "accueil";
     if (S.victoire && S.ecran === "final") S.ecran = "victoire";
     var libre = { pin: 1, orga: 1, verif: 1, partage: 1 };
-    var v = (!estInstalle() && !apercuAutorise() && !libre[S.ecran]) ? vues.installer : (vues[S.ecran] || vues.accueil);
+    var avecGps = { intro: 1, equipes: 1, carte: 1, etape: 1, inventaire: 1, final: 1 };
+    var v;
+    if (!estInstalle() && !apercuAutorise() && !libre[S.ecran]) v = vues.installer;
+    else if (!S.gps && !S.sansGps && !window.APERCU_CLAUDE && avecGps[S.ecran]) v = vues.localisation;
+    else v = vues[S.ecran] || vues.accueil;
     app.innerHTML = v();
     rendreNav();
     carte.cadrage = true;
@@ -801,6 +831,12 @@
       else { b.classList.remove("faux"); void b.offsetWidth; b.classList.add("faux"); retour("Essaie encore !", false); son.faux(); }
       return;
     }
+    if (b.dataset.repMoyens !== undefined) {
+      var dm = donneesEtape(S.courant), im = +b.dataset.repMoyens;
+      if (im === dm.moyens.bonne) { b.classList.add("bon"); retour("Bravo ! 🎉", true); son.bon(); setTimeout(function () { valider("grands"); }, 700); }
+      else { b.classList.remove("faux"); void b.offsetWidth; b.classList.add("faux"); b.disabled = true; retour("Non, essayez une autre réponse !", false); son.faux(); }
+      return;
+    }
     if (b.dataset.indice) {
       var st = etape(S.courant);
       if (b.dataset.indice === "moyens") st.indM++; else st.indG++;
@@ -862,6 +898,7 @@
       case "changer-equipe": S.equipe = null; orgOuvert = false; aller("equipes"); break;
       case "reset": confirmeReset = true; rendre(); break;
       case "reset-non": confirmeReset = false; rendre(); break;
+      case "sans-gps": S.sansGps = !S.sansGps; sauver(); toast(S.sansGps ? "Jeu autorisé sans GPS sur ce téléphone" : "GPS de nouveau obligatoire"); rendre(); break;
       case "reset-ok":
         var garderSon = S.son, garderGps = S.gps; S = etatVierge(); S.son = garderSon; S.gps = garderGps; gps.annonce = {}; sauver(); confirmeReset = false; orgOuvert = false; toast("Partie réinitialisée"); aller("accueil"); break;
       case "reverif": verifs = null; rendre(); break;
@@ -888,6 +925,13 @@
   }
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
   if (S.gps) lancerGPS();
+  try {
+    if (navigator.permissions && navigator.permissions.query) navigator.permissions.query({ name: "geolocation" }).then(function (r) {
+      if (r.state === "granted" && gps.suivi === null) lancerGPS();
+      if (r.state === "denied") { gps.refuse = true; S.gps = false; sauver(); rendre(); }
+      r.onchange = function () { if (r.state === "granted") { gps.refuse = false; lancerGPS(); } else if (r.state === "denied") { gps.refuse = true; S.gps = false; sauver(); rendre(); } };
+    }).catch(function () {});
+  } catch (e) {}
   if (estInstalle()) protegerNavigation();
   garderEcranAllume();
   if (S.ecran === "pin" || S.ecran === "orga") S.ecran = S.equipe ? "carte" : "accueil";
