@@ -397,3 +397,12 @@ html, body { overscroll-behavior-y: none; }
 .reponse.faux { animation: secoue .4s; border-color: var(--sang); opacity: .55; }
 .alphabet { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; font-size: .95rem; text-align: center; }
 .alphabet span { background: #fff7e6; border-radius: 6px; padding: 3px 0; display: flex; flex-direction: column; font-variant-numeric: tabular-nums; }
+
+/* Indices automatiques et sort de la sorcière */
+.zone-indices { display: flex; flex-direction: column; gap: 8px; }
+.zone-indices .indice { display: flex; align-items: center; gap: 8px; justify-content: space-between; animation: fondu .6s ease-out; }
+@keyframes fondu { from { opacity: 0; } to { opacity: 1; } }
+.zone-indices .indice .voix { width: 40px; height: 40px; font-size: 1.1rem; flex: none; }
+.prochain-indice { font-size: .95rem; font-weight: 600; color: #7a5a2a; text-align: center; }
+.penalite { background: #5a2214; color: #ffd9c7; border-radius: 12px; padding: 10px 14px; font-weight: 600; text-align: center; }
+.ensorcele .reponse, .ensorcele .choix, .ensorcele form .btn, .ensorcele .saisie { opacity: .45; pointer-events: none; }

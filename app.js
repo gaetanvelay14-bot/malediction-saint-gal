@@ -452,6 +452,70 @@
       "</section>";
   };
 
+  /* ----- Questions tirées au hasard, différentes pour chaque équipe ----- */
+  function melange(a) { a = a.slice(); for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+  // Le téléphone retient les questions déjà posées : la partie suivante en tire d'autres.
+  function dejaVues() { try { return JSON.parse(localStorage.getItem("malediction-deja-vues") || "{}"); } catch (e) { return {}; } }
+  function tirer() {
+    var b = equipe().banque, t = {}, h = dejaVues(), nb = JEU.etapes.length;
+    ["petits", "moyens", "grands"].forEach(function (n) {
+      var cle = b + "-" + n, vues = h[cle] || [], tous = QUESTIONS[n][b].map(function (_, i) { return i; });
+      var neuves = melange(tous.filter(function (i) { return vues.indexOf(i) < 0; }));
+      if (neuves.length < nb) { var anciennes = melange(tous.filter(function (i) { return neuves.indexOf(i) < 0; })); neuves = neuves.concat(anciennes); vues = []; }
+      var idx = neuves.slice(0, nb);
+      h[cle] = vues.concat(idx);
+      t[n] = {};
+      JEU.etapes.forEach(function (e, k) { var r = { i: idx[k] }; if (n === "moyens") r.ordre = melange([0, 1, 2, 3]); t[n][e.id] = r; });
+    });
+    try { localStorage.setItem("malediction-deja-vues", JSON.stringify(h)); } catch (e) {}
+    S.tirage = { banque: b, t: t };
+  }
+  function question(id, n) {
+    if (!S.tirage || S.tirage.banque !== equipe().banque) { tirer(); sauver(); }
+    var r = S.tirage.t[n][id], q = QUESTIONS[n][S.tirage.banque][r.i];
+    if (n === "moyens") return Object.assign({}, q, { options: r.ordre.map(function (k) { return q.options[k]; }), bonne: r.ordre.indexOf(q.bonne) });
+    return q;
+  }
+  function demarrerChrono(st, n) { if (!st.debut) st.debut = {}; if (!st.debut[n]) { st.debut[n] = Date.now(); sauver(); } }
+  function nbIndices(st, n, total) {
+    var t0 = st.debut && st.debut[n]; if (!t0) return 0;
+    var e = (Date.now() - t0) / 1000, c = JEU.indices;
+    if (e < c.premier) return 0;
+    return Math.min(total, 1 + Math.floor((e - c.premier) / c.intervalle));
+  }
+  function attenteIndice(st, n, total) {
+    var t0 = st.debut && st.debut[n], c = JEU.indices, k = nbIndices(st, n, total);
+    if (!t0 || k >= total) return 0;
+    var prochain = t0 + (c.premier + k * c.intervalle) * 1000;
+    return Math.max(0, Math.ceil((prochain - Date.now()) / 1000));
+  }
+  function zoneIndices(n) { return '<div class="zone-indices" id="zone-indices" data-niveau="' + n + '"></div><p class="penalite" id="penalite" hidden></p>'; }
+  var dernierNbIndices = -1;
+  function majIndices() {
+    var z = document.getElementById("zone-indices"); if (!z || !S.courant) return;
+    var st = etape(S.courant), n = z.dataset.niveau, q = question(S.courant, n), total = q.indices.length;
+    var k = nbIndices(st, n, total), att = attenteIndice(st, n, total);
+    if (k !== +z.dataset.nb) {
+      if (z.dataset.nb !== undefined && k > +z.dataset.nb) { son.fantome(); vibrer(120); }
+      z.dataset.nb = k;
+      var html = "";
+      for (var i = 0; i < k; i++) html += '<p class="indice"><b>💡 Indice ' + (i + 1) + " :</b> " + esc(q.indices[i]) + " " + boutonVoix(q.indices[i]) + "</p>";
+      html += '<p class="prochain-indice" id="prochain-indice"></p>';
+      z.innerHTML = html;
+    }
+    var pi = document.getElementById("prochain-indice");
+    if (pi) pi.textContent = att > 0 ? "⏳ " + (k === 0 ? "Premier indice" : "Indice suivant") + " dans " + Math.floor(att / 60) + ":" + ("0" + att % 60).slice(-2) : (k >= total ? "Tous les indices sont là. Courage !" : "");
+    var pen = document.getElementById("penalite"), parch = document.getElementById("parchemin");
+    var reste = st.bloque ? Math.ceil((st.bloque - Date.now()) / 1000) : 0;
+    if (pen && parch) {
+      pen.hidden = reste <= 0; parch.classList.toggle("ensorcele", reste > 0);
+      if (reste > 0) pen.textContent = "🧙‍♀️ Mauvaise réponse ! La sorcière vous jette un sort : attendez " + reste + " s.";
+    }
+  }
+  function ensorceler() { var st = etape(S.courant); st.bloque = Date.now() + JEU.indices.penalite * 1000; sauver(); majIndices(); }
+  function estEnsorcele() { var st = etape(S.courant); return st.bloque && st.bloque > Date.now(); }
+  setInterval(function () { if (S.ecran === "etape") majIndices(); }, 1000);
+
   function progresEtape(phase) {
     var ordre = ["chercher", "petits", "moyens", "grands", "recompense"], n = ordre.indexOf(phase);
     return '<div class="progres" aria-label="Avancement de la cachette">' + ordre.slice(0, 4).map(function (p, i) { return '<span class="' + (i < n ? "fait" : "") + '"></span>'; }).join("") + "</div>";
@@ -482,8 +546,8 @@
           (d.lieu.verifie ? "" : '<span class="fictif">⚠ ' + esc(d.lieu.nom) + " : lieu repéré sur la carte, à vérifier</span>");
       }
     }
-    else if (st.phase === "petits" && d.apparition && !JEU.objetsPhysiques && !apparitionVue[d.id]) {
-      var A = d.apparition;
+    else if (st.phase === "petits" && !apparitionVue[d.id]) {
+      var QA = question(d.id, "petits"), A = QA.apparition;
       h += '<div class="apparition pile centre"><p class="age">Regardez bien… ça va disparaître !</p>' +
         (A.couleur ? '<span class="apparition-boite" style="background:' + A.couleur + '" aria-hidden="true">' + A.emoji + "</span>" : '<span class="apparition-emoji" aria-hidden="true">' + A.emoji + "</span>") +
         '<div class="ligne" style="justify-content:center;flex-wrap:nowrap"><p style="font-size:1.3rem;font-weight:600">' + esc(A.texte) + "</p>" + boutonVoix(d.recit + " " + A.texte) + "</div></div>" +
@@ -491,37 +555,30 @@
       minuterieApparition(d.id);
     }
     else if (st.phase === "petits") {
-      var P = d.petits, contenuChoix;
+      var P = question(d.id, "petits"), contenuChoix; demarrerChrono(st, "petits");
       if (P.couleurs) contenuChoix = P.couleurs.map(function (c, i) { return '<button class="choix couleur" style="background:' + c + '" data-choix="' + i + '" aria-label="' + esc(P.nomsCouleurs[i]) + '"></button>'; }).join("");
       else if (P.compter) contenuChoix = P.compter.options.map(function (n, i) { return '<button class="choix" data-choix="' + i + '" aria-label="' + n + '"><span class="compte">' + new Array(n + 1).join(P.compter.emoji) + "</span></button>"; }).join("");
       else contenuChoix = P.choix.map(function (c, i) { return '<button class="choix" data-choix="' + i + '">' + c + "</button>"; }).join("");
-      h += '<div class="parchemin"><p class="age">Épreuve des petits · 2-6 ans</p><div class="ligne" style="justify-content:space-between;flex-wrap:nowrap"><h3>' + esc(P.question) + "</h3>" + boutonVoix(d.recit + " " + P.question) + "</div>" +
-        '<p class="petit">' + esc(d.recit) + '</p><div class="choix-grille">' + contenuChoix + '</div><p class="retour" id="retour" aria-live="polite"></p>' +
-        (d.apparition && !JEU.objetsPhysiques ? '<button class="btn second" data-action="revoir">👀 Revoir</button>' : "") + "</div>";
+      h += '<div class="parchemin" id="parchemin"><p class="age">Épreuve des petits · 2-6 ans</p><div class="ligne" style="justify-content:space-between;flex-wrap:nowrap"><h3>' + esc(P.question) + "</h3>" + boutonVoix(P.question) + "</div>" +
+        '<div class="choix-grille">' + contenuChoix + '</div><p class="retour" id="retour" aria-live="polite"></p>' +
+        '<button class="btn second" data-action="revoir">👀 Revoir</button>' + zoneIndices("petits") + "</div>";
     }
     else if (st.phase === "moyens") {
-      var M = d.moyens;
-      h += '<div class="parchemin"><p class="age">Épreuve des moyens · 7-10 ans</p><div class="ligne" style="justify-content:space-between;flex-wrap:nowrap"><h3>' + esc(M.question) + "</h3>" + boutonVoix(M.question + " " + (M.options || []).join(", ")) + "</div>";
-      if (M.type === "choix") {
-        h += '<div class="reponses">' + M.options.map(function (o, i) { return '<button class="reponse" data-rep-moyens="' + i + '">' + esc(o) + "</button>"; }).join("") + "</div>";
-      } else {
-        h += '<form class="pile" data-form="moyens"><label for="rep-moyens" class="petit">Votre réponse</label>' +
-          '<input id="rep-moyens" class="saisie" autocomplete="off" autocapitalize="off" spellcheck="false" ' + (M.type === "nombre" ? 'inputmode="numeric"' : "") + ">" +
-          '<button class="btn" type="submit">Valider</button></form>';
-      }
-      h += '<p class="retour" id="retour" aria-live="polite"></p>' + blocIndices("moyens", M.indices, st.indM) + "</div>";
+      var M = question(d.id, "moyens"); demarrerChrono(st, "moyens");
+      h += '<div class="parchemin" id="parchemin"><p class="age">Épreuve des moyens · 7-10 ans</p><div class="ligne" style="justify-content:space-between;flex-wrap:nowrap"><h3>' + esc(M.question) + "</h3>" + boutonVoix(M.question + " " + M.options.join(", ")) + "</div>" +
+        '<div class="reponses">' + M.options.map(function (o, i) { return '<button class="reponse" data-rep-moyens="' + i + '">' + esc(o) + "</button>"; }).join("") + "</div>" +
+        '<p class="retour" id="retour" aria-live="polite"></p>' + zoneIndices("moyens") + "</div>";
     }
     else if (st.phase === "grands") {
-      var G = d.grands;
-      h += '<div class="parchemin"><p class="age">Épreuve des grands · 11-14 ans</p><div class="ligne" style="justify-content:space-between;flex-wrap:nowrap"><h3>Le message codé</h3>' + boutonVoix(G.question) + "</div>" +
-        "<p>" + esc(G.question) + "</p>" +
+      var G = question(d.id, "grands"); demarrerChrono(st, "grands");
+      h += '<div class="parchemin" id="parchemin"><p class="age">Épreuve des grands · 11-14 ans</p><div class="ligne" style="justify-content:space-between;flex-wrap:nowrap"><h3>L\'énigme de la sorcière</h3>' + boutonVoix(G.question) + "</div>" +
+        "<p style=\"font-size:1.1rem\">" + esc(G.question) + "</p>" +
+        (G.code ? '<p class="message-code">' + esc(G.code) + "</p>" : "") +
         (G.alphabet ? '<div class="alphabet">' + "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map(function (l, i) { return "<span><b>" + l + "</b>" + (i + 1) + "</span>"; }).join("") + "</div>" : "") +
-        (G.grille ? '<div class="defile"><table class="tableau" style="color:inherit"><tr>' + G.grille.map(function (c) { return '<td style="font-size:1.6rem;text-align:center">' + c[0] + "</td>"; }).join("") + "</tr><tr>" + G.grille.map(function (c) { return '<td style="text-align:center;font-weight:700">' + c[1] + "</td>"; }).join("") + "</tr></table></div>" : "") +
-        (JEU.objetsPhysiques ? '<p class="petit">Le message se trouve sur ce que vous avez découvert dans la cachette.</p>' : '<p class="age">Le message de la sorcière</p><p class="message-code">' + esc(G.code) + "</p>") +
-        '<form class="pile" data-form="grands"><label for="rep-grands" class="petit">Le mot décodé</label>' +
-        '<input id="rep-grands" class="saisie" autocomplete="off" autocapitalize="characters" spellcheck="false">' +
-        '<button class="btn" type="submit">Déchiffrer</button></form><p class="retour" id="retour" aria-live="polite"></p>' +
-        blocIndices("grands", G.indices, st.indG) + "</div>";
+        '<form class="pile" data-form="grands"><label for="rep-grands" class="petit">Votre réponse</label>' +
+        '<input id="rep-grands" class="saisie" autocomplete="off" autocapitalize="off" spellcheck="false">' +
+        '<button class="btn" type="submit">Valider</button></form><p class="retour" id="retour" aria-live="polite"></p>' +
+        zoneIndices("grands") + "</div>";
     }
     else if (st.phase === "recompense") {
       var mot = JEU.formule[d.id - 1];
@@ -601,9 +658,10 @@
       var st = S.etapes[d.id], etat = st && st.fini ? '<span class="pastille ok">Finie</span>' : (st ? '<span class="pastille cours">' + esc(st.phase) + "</span>" : '<span class="pastille att">À faire</span>');
       return "<tr><td>" + d.id + ". " + esc(d.nom) + "</td><td>" + etat + "</td><td>" + (st ? (st.indM + st.indG) : 0) + "</td><td>" + (st && st.heure ? new Date(st.heure).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—") + "</td></tr>";
     }).join("");
-    var reponses = JEU.etapes.map(function (d) {
-      var P = d.petits, bonP = P.couleurs ? P.nomsCouleurs[P.bonne] : P.compter ? String(P.compter.options[P.bonne]) : P.choix[P.bonne];
-      return "<tr><td><b>" + d.id + ". " + esc(d.nom) + "</b><br><span class=\"doux petit\">" + esc(d.lieu.nom) + (d.lieu.verifie ? " ✔ vérifié" : " ⚠ à vérifier") + "</span></td><td>" + esc(bonP) + "</td><td>" + esc(d.moyens.type === "choix" ? d.moyens.options[d.moyens.bonne] : d.moyens.reponses[0]) + "</td><td>" + esc(d.grands.reponses[0]).toUpperCase() + "</td><td>" + (d.chiffre ? d.chiffre.position + "e = " + esc(d.chiffre.valeur) : "—") + "</td></tr>";
+    var reponses = !S.equipe ? "" : JEU.etapes.map(function (d) {
+      var P = question(d.id, "petits"), M = question(d.id, "moyens"), G = question(d.id, "grands");
+      var bonP = P.couleurs ? P.nomsCouleurs[P.bonne] : P.compter ? String(P.compter.options[P.bonne]) : P.choix[P.bonne];
+      return "<tr><td><b>" + d.id + ". " + esc(d.nom) + "</b><br><span class=\"doux petit\">" + esc(d.lieu.nom) + (d.lieu.verifie ? " ✔ vérifié" : " ⚠ à vérifier") + "</span></td><td>" + esc(bonP) + "</td><td>" + esc(M.options[M.bonne]) + "</td><td>" + esc(G.reponses[0]).toUpperCase() + "</td><td>" + (d.chiffre ? d.chiffre.position + "e = " + esc(d.chiffre.valeur) : "—") + "</td></tr>";
     }).join("");
     var objets = JEU.etapes.map(function (d) {
       return "<li><b>" + d.id + ". " + esc(d.nom) + "</b> (" + esc(d.lieu.nom) + ") : " + esc(d.cachette) + " <i>Contenu :</i> " + esc(d.contenu) + "</li>";
@@ -617,7 +675,7 @@
       (S.courant && !etape(S.courant).fini ? '<button class="btn" data-action="passer">' + (etape(S.courant).phase === "chercher" && !etape(S.courant).arrive ? "Débloquer l\'arrivée à la cachette (sans GPS)" : "Valider l\'épreuve en cours (" + esc(etape(S.courant).phase) + ")") + "</button>" : (nbFinies() === JEU.etapes.length && !S.coffreArrive ? '<button class="btn" data-action="ouvrir-coffre">Débloquer l\'arrivée au coffre (sans GPS)</button>' : '<p class="doux">Aucune épreuve en cours.</p>')) +
       '<button class="btn second" data-action="changer-equipe">Changer d\'équipe</button>' +
       '<button class="btn second" data-action="sans-gps">' + (S.sansGps ? "Rendre le GPS obligatoire" : "Dépannage : jouer sans GPS sur ce téléphone") + "</button></div>" +
-      '<div class="carte-bloc"><h3>Réponses</h3><div class="defile"><table class="tableau"><tr><th>Cachette</th><th>Petits</th><th>Moyens</th><th>Grands</th><th>Cadenas</th></tr>' + reponses + "</table></div>" +
+      '<div class="carte-bloc"><h3>Réponses de cette partie' + (equipe() ? " (équipe " + esc(equipe().nom) + ")" : "") + "</h3>" + (S.equipe ? "" : '<p class="doux">Choisissez une équipe pour voir ses questions.</p>') + '<div class="defile"><table class="tableau"><tr><th>Cachette</th><th>Petits</th><th>Moyens</th><th>Grands</th><th>Cadenas</th></tr>' + reponses + "</table></div>" +
       "<p>Code du cadenas : <b>" + esc(JEU.codeCadenas) + "</b> · Formule : <b>" + esc(JEU.formuleAffichee) + "</b></p></div>" +
       (JEU.objetsPhysiques ? '<div class="carte-bloc"><h3>À cacher avant la partie</h3><ul class="pile" style="padding-left:20px;margin:0">' + objets + "</ul></div>" : '<div class="carte-bloc"><h3>Rien à cacher</h3><p>Tout apparaît sur le téléphone à l\'arrivée. Pour la version avec objets cachés, mettez <code>objetsPhysiques: true</code> dans data.js.</p></div>') +
       '<div class="carte-bloc"><h3>Partager le jeu</h3><button class="btn second" data-aller="partage">📱 Afficher le QR code</button></div>' +
@@ -768,6 +826,7 @@
     else brancherCarte();
     derniereDistance = null;
     majGPS();
+    majIndices();
     var champ = app.querySelector(".saisie"); if (champ && !("ontouchstart" in window)) champ.focus();
   }
 
@@ -814,7 +873,7 @@
       aller(cible); return;
     }
     if (b.dataset.equipe) {
-      S.equipe = b.dataset.equipe; if (!S.debut) S.debut = Date.now(); carte.vue = null;
+      S.equipe = b.dataset.equipe; if (!S.debut) S.debut = Date.now(); carte.vue = null; tirer(); sauver();
       son.fantome(); aller("carte"); return;
     }
     if (b.dataset.repere) {
@@ -826,15 +885,16 @@
       S.courant = id; etape(id); aller("etape"); return;
     }
     if (b.dataset.choix !== undefined) {
-      var d = donneesEtape(S.courant), i = +b.dataset.choix;
-      if (i === d.petits.bonne) { b.classList.add("bon"); retour("Bravo ! 🎉", true); son.bon(); setTimeout(function () { valider("moyens"); }, 700); }
+      var i = +b.dataset.choix;
+      if (i === question(S.courant, "petits").bonne) { b.classList.add("bon"); retour("Bravo ! 🎉", true); son.bon(); setTimeout(function () { valider("moyens"); }, 700); }
       else { b.classList.remove("faux"); void b.offsetWidth; b.classList.add("faux"); retour("Essaie encore !", false); son.faux(); }
       return;
     }
     if (b.dataset.repMoyens !== undefined) {
-      var dm = donneesEtape(S.courant), im = +b.dataset.repMoyens;
-      if (im === dm.moyens.bonne) { b.classList.add("bon"); retour("Bravo ! 🎉", true); son.bon(); setTimeout(function () { valider("grands"); }, 700); }
-      else { b.classList.remove("faux"); void b.offsetWidth; b.classList.add("faux"); b.disabled = true; retour("Non, essayez une autre réponse !", false); son.faux(); }
+      if (estEnsorcele()) return;
+      var im = +b.dataset.repMoyens;
+      if (im === question(S.courant, "moyens").bonne) { b.classList.add("bon"); retour("Bravo ! 🎉", true); son.bon(); setTimeout(function () { valider("grands"); }, 700); }
+      else { b.classList.remove("faux"); void b.offsetWidth; b.classList.add("faux"); b.disabled = true; retour("", false); son.faux(); ensorceler(); }
       return;
     }
     if (b.dataset.indice) {
@@ -894,7 +954,7 @@
       case "fermer-orga": orgOuvert = false; confirmeReset = false; aller(S.equipe ? "carte" : "accueil"); break;
       case "passer":
         var st3 = etape(S.courant), ordre = ["chercher", "petits", "moyens", "grands", "recompense"];
-        st3.aide = true; if (st3.phase === "chercher" && !st3.arrive) st3.arrive = true; else st3.phase = ordre[Math.min(ordre.indexOf(st3.phase) + 1, 4)]; sauver(); toast("Épreuve validée par l'organisateur"); rendre(); break;
+        st3.aide = true; st3.bloque = 0; if (st3.phase === "chercher" && !st3.arrive) st3.arrive = true; else st3.phase = ordre[Math.min(ordre.indexOf(st3.phase) + 1, 4)]; sauver(); toast("Épreuve validée par l'organisateur"); rendre(); break;
       case "changer-equipe": S.equipe = null; orgOuvert = false; aller("equipes"); break;
       case "reset": confirmeReset = true; rendre(); break;
       case "reset-non": confirmeReset = false; rendre(); break;
@@ -910,9 +970,11 @@
     ev.preventDefault();
     var f = ev.target, quoi = f.dataset.form; if (!quoi) return;
     var d = donneesEtape(S.courant), champ = f.querySelector("input"), val = champ.value;
-    var ok = bonneReponse(val, quoi === "moyens" ? d.moyens.reponses : d.grands.reponses);
+    if (estEnsorcele()) return;
+    var ok = bonneReponse(val, question(S.courant, quoi).reponses);
     if (ok) { retour("Bonne réponse ! ✨", true); champ.blur(); setTimeout(function () { valider(quoi === "moyens" ? "grands" : "recompense"); }, 600); }
-    else { retour(val.trim() ? "Ce n'est pas ça… Réfléchissez ensemble !" : "Écrivez une réponse d'abord.", false); son.faux(); champ.select(); }
+    else if (!val.trim()) retour("Écrivez une réponse d'abord.", false);
+    else { retour("", false); son.faux(); champ.select(); ensorceler(); }
   });
 
   /* ------------------------------------------------------------------ */

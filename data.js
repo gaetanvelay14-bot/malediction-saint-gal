@@ -14,7 +14,7 @@
 
 const JEU = {
   titre: "La Malédiction de Saint-Gal",
-  version: "5.0",
+  version: "6.0",
 
   // false = rien à cacher sur place : tout apparaît sur le téléphone à l'arrivée.
   // true  = version avec objets cachés (enveloppes, boîtes…) et vrai coffre.
@@ -43,10 +43,14 @@ const JEU = {
   },
 
   equipes: [
-    { id: "citrouille", nom: "Citrouille", emoji: "🎃", couleur: "#ff9a3c", ordre: [1, 2, 3, 4, 5] },
-    { id: "fantome", nom: "Fantôme", emoji: "👻", couleur: "#cfd8ff", ordre: [3, 4, 5, 1, 2] },
-    { id: "chauvesouris", nom: "Chauve-souris", emoji: "🦇", couleur: "#c89bff", ordre: [5, 1, 2, 3, 4] }
+    { id: "citrouille", nom: "Citrouille", emoji: "🎃", couleur: "#ff9a3c", banque: "A", ordre: [1, 2, 3, 4, 5] },
+    { id: "chauvesouris", nom: "Chauve-souris", emoji: "🦇", couleur: "#c89bff", banque: "B", ordre: [4, 5, 1, 2, 3] }
   ],
+
+  // Indices automatiques : le 1er après « premier » secondes, puis un nouveau
+  // toutes les « intervalle » secondes. « penalite » = attente après une erreur.
+  indices: { premier: 90, intervalle: 60, penalite: 15 },
+
 
   intro: {
     titre: "La lettre de la sorcière",
@@ -61,6 +65,9 @@ const JEU = {
   },
 
   /* ---------- LES 5 CACHETTES ----------
+     Les questions ne sont plus ici : elles sont tirées au hasard dans
+     questions.js (banque A pour Citrouille, banque B pour Chauve-souris).
+     Chaque cachette donne toujours le même mot de formule et le même chiffre.
      Chaque cachette a 3 épreuves, une par âge :
        petits (2-6 ans)  : toucher la bonne image
        moyens (7-10 ans) : devinette ou calcul, réponse à toucher
@@ -81,25 +88,6 @@ const JEU = {
       cachette: "Rien à cacher : tout apparaît sur le téléphone.",
       contenu: "Apparition d'une chauve-souris.",
       recit: "Dans la ruelle sombre, quelque chose bat des ailes…",
-      apparition: { emoji: "🦇", texte: "Une chauve-souris sort de la ruelle !" },
-      petits: {
-        question: "Quelle bête est apparue ?",
-        choix: ["🦇", "🐈‍⬛", "🐸", "🦉"],
-        bonne: 0
-      },
-      moyens: {
-        type: "choix",
-        question: "Je suis rond et orange. Pour Halloween, on me creuse et on met une bougie dedans. Qui suis-je ?",
-        options: ["🎃 Une citrouille", "🍎 Une pomme", "⚽ Un ballon", "🌞 Le soleil"],
-        bonne: 0,
-        indices: ["Je pousse dans le potager.", "On fait de la soupe avec moi."]
-      },
-      grands: {
-        question: "Il manque des lettres dans le message de la sorcière. C'est ce que fait une bougie dans la nuit.",
-        code: "B _ I L L _",
-        reponses: ["brille"],
-        indices: ["La 2e lettre est un R.", "La dernière lettre est un E.", "C'est BRI… LLE."]
-      },
       chiffre: { position: 1, valeur: "3" }
     },
     {
@@ -116,26 +104,6 @@ const JEU = {
       cachette: "Rien à cacher : tout apparaît sur le téléphone.",
       contenu: "Apparition d'une boîte orange.",
       recit: "Une odeur de soupe aux crapauds… Le chaudron de la sorcière est tout près !",
-      apparition: { couleur: "#ff8a1f", emoji: "📦", texte: "Une boîte magique apparaît près du banc !" },
-      petits: {
-        question: "De quelle couleur était la boîte ?",
-        couleurs: ["#ff8a1f", "#3b82f6", "#22c55e", "#f5f5f5"],
-        nomsCouleurs: ["orange", "bleue", "verte", "blanche"],
-        bonne: 0
-      },
-      moyens: {
-        type: "choix",
-        question: "Dans le chaudron, il y a 5 crapauds. La sorcière en ajoute 3. Combien de crapauds en tout ?",
-        options: ["6", "7", "8", "9"],
-        bonne: 2,
-        indices: ["Comptez sur vos doigts : 5, puis encore 3.", "6, 7, 8…"]
-      },
-      grands: {
-        question: "La sorcière a écrit ce mot à l'envers. Lisez-le dans le bon sens.",
-        code: "E N U L",
-        reponses: ["lune"],
-        indices: ["Lisez de droite à gauche.", "On la voit la nuit dans le ciel.", "C'est L, U, N, E."]
-      },
       chiffre: { position: 2, valeur: "1" }
     },
     {
@@ -152,26 +120,6 @@ const JEU = {
       cachette: "Rien à cacher : tout apparaît sur le téléphone.",
       contenu: "Apparition de 3 citrouilles.",
       recit: "Le sol tremble… Quelque chose pousse dans les jardins !",
-      apparition: { emoji: "🎃🎃🎃", texte: "Des citrouilles sortent de terre !" },
-      petits: {
-        question: "Combien de citrouilles sont sorties ?",
-        compter: { emoji: "🎃", options: [1, 2, 3, 4] },
-        bonne: 2
-      },
-      moyens: {
-        type: "choix",
-        question: "Je vole la nuit et je dors la tête en bas. Qui suis-je ?",
-        options: ["🐦 Un oiseau", "🦇 Une chauve-souris", "🦋 Un papillon", "🐝 Une abeille"],
-        bonne: 1,
-        indices: ["J'ai des ailes mais je ne suis pas un oiseau.", "Une de mes amies est apparue dans la ruelle maudite !"]
-      },
-      grands: {
-        question: "Chaque nombre est une lettre. Servez-vous du tableau pour décoder le message.",
-        code: "4 - 15 - 18 - 5 - 5",
-        alphabet: true,
-        reponses: ["doree", "dorée"],
-        indices: ["4 = D, 15 = O.", "C'est la couleur de l'or.", "D, O, R, E, E."]
-      },
       chiffre: { position: 3, valeur: "1" }
     },
     {
@@ -188,26 +136,6 @@ const JEU = {
       cachette: "Rien à cacher : tout apparaît sur le téléphone.",
       contenu: "Apparition d'une étoile.",
       recit: "Brrr… Un souffle froid. Les fantômes gentils de Saint-Gal veulent vous aider !",
-      apparition: { emoji: "⭐", texte: "Une étoile magique brille près de l'eau !" },
-      petits: {
-        question: "Quelle forme brillait ?",
-        choix: ["⭐", "⚫", "🔺", "🟥"],
-        bonne: 0
-      },
-      moyens: {
-        type: "choix",
-        question: "La sorcière avait 10 bonbons. Elle en a mangé 3. Combien lui en reste-t-il ?",
-        options: ["5", "6", "7", "13"],
-        bonne: 2,
-        indices: ["Il faut enlever 3.", "10, 9, 8…"]
-      },
-      grands: {
-        question: "Avec la grille des fantômes, remplacez chaque symbole du message par sa lettre.",
-        code: "🎃 👻 🕷️ 🦇 🌙",
-        grille: [["🎃", "S"], ["👻", "A"], ["🕷️", "U"], ["🦇", "V"], ["🌙", "E"], ["🕸️", "R"], ["🐈‍⬛", "O"]],
-        reponses: ["sauve"],
-        indices: ["🎃 = S, 👻 = A…", "S, A, U…", "C'est SAUVE."]
-      },
       chiffre: { position: 4, valeur: "0" }
     },
     {
@@ -224,25 +152,6 @@ const JEU = {
       cachette: "Rien à cacher : tout apparaît sur le téléphone.",
       contenu: "Apparition d'une araignée.",
       recit: "Le grimoire de la sorcière s'ouvre tout seul… Une petite bête le surveille !",
-      apparition: { emoji: "🕷️", texte: "Une araignée garde le grimoire !" },
-      petits: {
-        question: "Quelle bête gardait le grimoire ?",
-        choix: ["🐸", "🕷️", "🐭", "🦊"],
-        bonne: 1
-      },
-      moyens: {
-        type: "choix",
-        question: "Je suis pointu et noir. La sorcière me porte sur la tête. Qui suis-je ?",
-        options: ["🧢 Une casquette", "🎩 Un chapeau pointu", "👑 Une couronne", "🪖 Un casque"],
-        bonne: 1,
-        indices: ["Je suis pointu en haut.", "Les sorcières en ont toujours un !"]
-      },
-      grands: {
-        question: "Prenez la première lettre de chaque mot du grimoire, dans l'ordre. Quel nom apparaît ?",
-        code: "Sorcière · Araignée · Inquiétante · Nuit · Toile · Grimoire · Araignée · Lune",
-        reponses: ["saint-gal", "saintgal", "saint gal"],
-        indices: ["Sorcière donne S.", "S, A, I, N, T…", "C'est le nom de votre village !"]
-      },
       chiffre: null
     }
   ],
