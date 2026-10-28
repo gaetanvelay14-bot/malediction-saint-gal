@@ -1738,7 +1738,24 @@ document.addEventListener("pointerdown", function (ev) { if (ev.target.closest("
 /* ------------------------------------------------------------------ */
 // Parcours reçu par lien (#p=…), lu avant toute modification de l'adresse
 var lienRecu = (location.hash || "").match(/^#p=([A-Za-z0-9_-]+)/);
-if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol) && !window.APERCU_CLAUDE) { try { navigator.serviceWorker.register("sw.js").catch(function () {}); } catch (e) {} }
+// Service worker + mise à jour automatique sur tous les téléphones
+if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol) && !window.APERCU_CLAUDE) {
+  try {
+    var dejaRecharge = false, avaitControleur = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      if (dejaRecharge || !avaitControleur) return; dejaRecharge = true;
+      try { sessionStorage.setItem("msg-maj", "1"); } catch (e) {}
+      location.reload();
+    });
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(function (reg) {
+      var verifierMaj = function () { if (navigator.onLine) reg.update().catch(function () {}); };
+      verifierMaj();
+      document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") verifierMaj(); });
+      setInterval(verifierMaj, 10 * 60 * 1000);
+    }).catch(function () {});
+  } catch (e) {}
+}
+try { if (sessionStorage.getItem("msg-maj")) { sessionStorage.removeItem("msg-maj"); setTimeout(function () { toast("✨ Le jeu a été mis à jour"); }, 800); } } catch (e) {}
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
 try { localStorage.removeItem("malediction-saint-gal-v1"); localStorage.removeItem("malediction-deja-vues"); } catch (e) {}
 if (UI.gps) lancerGPS();
