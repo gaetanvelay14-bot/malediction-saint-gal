@@ -533,10 +533,10 @@ function majGPS() {
 /* Côté joueur : parcours chargé et partie en cours                   */
 /* ------------------------------------------------------------------ */
 var JOUE = lire("msg-parcours", null);
-JOUE = JOUE ? completerParcours(JOUE) : depuisModele(0, true);
+JOUE = JOUE ? completerParcours(JOUE) : null; // aucun parcours tant que l'organisateur n'en a pas envoyé
 var PARTIE = lire("msg-partie", null);
-function partieVierge() { return { pid: JOUE.id, graine: JOUE.graine, equipe: null, debut: null, fin: null, courant: null, etapes: {}, coffreArrive: false, codeOuvert: false, victoire: false }; }
-if (!PARTIE || PARTIE.pid !== JOUE.id || PARTIE.graine !== JOUE.graine) PARTIE = partieVierge();
+function partieVierge() { return { pid: JOUE ? JOUE.id : null, graine: JOUE ? JOUE.graine : null, equipe: null, debut: null, fin: null, courant: null, etapes: {}, coffreArrive: false, codeOuvert: false, victoire: false }; }
+if (!PARTIE || !JOUE || PARTIE.pid !== JOUE.id || PARTIE.graine !== JOUE.graine) PARTIE = partieVierge();
 function sauverPartie() { if (!TEST) ecrire("msg-partie", PARTIE); else if (TEST.st) {} }
 function chargerParcoursJoueur(p) {
   JOUE = completerParcours(p); ecrire("msg-parcours", JOUE);
@@ -623,15 +623,22 @@ function entete() {
 }
 
 vues.accueil = function () {
-  var e = estimer(JOUE), enCours = PARTIE.equipe != null && !PARTIE.victoire;
+  var blocJoueur;
+  if (!JOUE) {
+    blocJoueur = '<div class="choix-mode joueur"><p class="age">🎮 Côté joueur</p>' +
+      '<p class="resume-parcours"><b>Pas encore de parcours.</b><br>Demandez à l\'organisateur d\'afficher son QR code, puis scannez-le.</p>' +
+      '<button class="btn gros" data-aller="charger">📷 Scanner le QR code de l\'organisateur</button></div>';
+  } else {
+    var e = estimer(JOUE), enCours = PARTIE.equipe != null && !PARTIE.victoire;
+    blocJoueur = '<div class="choix-mode joueur"><p class="age">🎮 Côté joueur</p>' +
+      '<p class="resume-parcours"><b>' + esc(JOUE.nom) + "</b><br>" + JOUE.missions.length + " missions · " + JOUE.equipes.length + " équipe" + (JOUE.equipes.length > 1 ? "s" : "") + " · ≈ " + dureeMin(e.total) + "</p>" +
+      (enCours ? '<button class="btn gros" data-aller="carte">▶️ Reprendre la partie</button>' : '<button class="btn gros" data-action="commencer">▶️ Jouer</button>') +
+      '<button class="btn discret" data-aller="charger">📷 Scanner un autre parcours</button></div>';
+  }
   return '<section class="pile accueil">' +
     '<div class="citrouille-anim" aria-hidden="true">🎃</div><h1>' + esc(TEXTES.titre) + "</h1>" +
     '<p class="doux">Un escape game d\'Halloween à jouer en équipe, avec un adulte.</p>' +
-    '<div class="pile" style="width:100%;margin-top:8px">' +
-      '<div class="choix-mode joueur"><p class="age">🎮 Côté joueur</p>' +
-        '<p class="resume-parcours"><b>' + esc(JOUE.nom) + "</b><br>" + JOUE.missions.length + " missions · " + JOUE.equipes.length + " équipe" + (JOUE.equipes.length > 1 ? "s" : "") + " · ≈ " + dureeMin(e.total) + "</p>" +
-        (enCours ? '<button class="btn gros" data-aller="carte">▶️ Reprendre la partie</button>' : '<button class="btn gros" data-action="commencer">▶️ Jouer</button>') +
-        '<button class="btn discret" data-aller="charger">📷 Charger le parcours de l\'organisateur</button></div>' +
+    '<div class="pile" style="width:100%;margin-top:8px">' + blocJoueur +
       '<div class="choix-mode orga"><p class="age">🛠️ Côté organisateur</p><p class="doux petit">Créer le parcours sur la carte, choisir les missions et l\'envoyer aux téléphones.</p>' +
         '<button class="btn second" data-action="ouvrir-orga">🛠️ Espace organisateur</button></div>' +
       '<div class="ligne" style="justify-content:center"><button class="btn discret" data-aller="verif">Prêt pour le mode avion ?</button><button class="btn discret" data-aller="partage">📱 QR code du jeu</button></div>' +
@@ -773,7 +780,7 @@ vues.victoire = function () {
 /* ----- Code adulte (déblocage, défi, outils, espace organisateur) ----- */
 var PIN = { saisie: "", but: "outils", retour: "accueil" };
 function demanderCode(but, retour) { PIN = { saisie: "", but: but, retour: retour || UI.ecran }; aller("pin"); }
-function codeAttendu() { return PIN.but === "orga" ? (UI.codeOrga || "1031") : (TEST ? TEST.p.code : JOUE.code) || "1031"; }
+function codeAttendu() { return PIN.but === "orga" ? (UI.codeOrga || "1031") : (TEST ? TEST.p.code : JOUE && JOUE.code) || "1031"; }
 vues.pin = function () {
   var t = { orga: ["Espace organisateur", "Réservé aux adultes. Tapez le code organisateur (1031 au départ)."], outils: ["Outils adulte", "Tapez le code adulte du parcours."], debloquer: ["Déblocage par un adulte", "Le GPS ne marche pas ? Si vous êtes bien au bon endroit, un adulte tape le code pour débloquer."], defi: ["Validation du défi", "L'adulte vérifie que le défi est réussi, puis tape le code."] }[PIN.but];
   var L = codeAttendu().length, aff = ""; for (var i = 0; i < L; i++) aff += "<span>" + (PIN.saisie[i] ? "•" : "") + "</span>";
@@ -795,6 +802,7 @@ function codeBon() {
 /* ----- Outils adulte sur un téléphone joueur ----- */
 var confirmeReset = false;
 vues.outils = function () {
+  if (!JOUE) return '<section class="pile"><div class="entete"><h2>Outils adulte</h2><button class="btn second petit-btn" data-action="fermer-outils">Fermer</button></div><p>Aucun parcours chargé sur ce téléphone.</p><button class="btn second" data-aller="verif">Contrôle mode avion</button><button class="btn" data-aller="charger">📷 Scanner le parcours</button></section>';
   var eq = equipeJ(), tps = PARTIE.debut ? duree((PARTIE.fin || Date.now()) - PARTIE.debut) : "pas commencé";
   var lignes = JOUE.missions.map(function (m, i) {
     var st = PARTIE.etapes[i], e = st && st.fini ? '<span class="pastille ok">Réussie</span>' : st && (st.phase !== "chercher" || st.arrive) ? '<span class="pastille cours">En cours</span>' : '<span class="pastille att">À faire</span>';
@@ -1184,7 +1192,11 @@ function recuTexteQR(t) {
 }
 var CHARGE = null; // parcours décodé en attente de confirmation
 function importerCode(code) {
-  decoderParcours(code).then(function (p) { CHARGE = p; son.tresor(); aller("charge-ok"); })
+  decoderParcours(code).then(function (p) {
+    CHARGE = p; son.tresor();
+    if (!estInstalle() && !apercuAutorise() && (!JOUE || PARTIE.equipe == null)) { chargerParcoursJoueur(p); }
+    aller("charge-ok");
+  })
     .catch(function (e) { toast("Ce code ne marche pas : " + (e && e.message ? e.message : "il est incomplet.")); aller("charger"); });
 }
 
@@ -1194,12 +1206,11 @@ vues.charger = function () {
     '<div class="barre-scan"><span id="scan-barre"></span></div><p id="scan-etat" class="gps-info">Touchez « Scanner » et autorisez la caméra.</p>' +
     '<button class="btn gros" data-action="scanner">📷 Scanner le QR code</button>' +
     '<details class="carte-bloc"><summary>Coller un lien reçu par message</summary><div class="pile" style="margin-top:10px"><textarea id="code-colle" class="champ" rows="3" placeholder="https://…#p=…"></textarea><button class="btn second" data-action="coller-code">Charger ce lien</button></div></details>' +
-    '<details class="carte-bloc"><summary>Utiliser un parcours modèle</summary><div class="pile" style="margin-top:10px">' + MODELES.map(function (M, i) { return '<button class="btn second" data-modele-joueur="' + i + '">' + esc(M.nom) + '</button><p class="doux petit">' + esc(M.resume) + "</p>"; }).join("") + "</div></details>" +
     '<button class="btn discret" data-action="retour-accueil">Retour</button></section>';
 };
 vues["charge-ok"] = function () {
   var p = CHARGE; if (!p) return vues.charger();
-  var e = estimer(p), enCours = PARTIE.equipe != null && !PARTIE.victoire && JOUE.id !== p.id;
+  var e = estimer(p), enCours = JOUE && PARTIE.equipe != null && !PARTIE.victoire && JOUE.id !== p.id;
   return '<section class="pile centre"><div class="citrouille-anim" aria-hidden="true">📜</div><h2>Parcours reçu !</h2>' +
     '<div class="carte-bloc" style="text-align:left"><h3>' + esc(p.nom) + "</h3><p>" + p.missions.length + " missions · " + p.equipes.map(function (q) { return q.emoji + " " + esc(q.nom); }).join(", ") + "<br>Durée estimée : <b>≈ " + dureeMin(e.total) + "</b></p></div>" +
     (enCours ? '<p class="fictif">⚠ La partie en cours sur ce téléphone sera effacée.</p>' : "") +
@@ -1466,7 +1477,7 @@ vues.installer = function () {
   else if (estIOS) h += '<ol class="etapes-install"><li><span class="num">1</span><span>Touchez le bouton <b>Partager</b> ⬆️ (le carré avec une flèche).</span></li><li><span class="num">2</span><span>Touchez <b>« Sur l\'écran d\'accueil »</b> ➕.</span></li><li><span class="num">3</span><span>Touchez <b>« Ajouter »</b>.</span></li><li><span class="num">4</span><span>Ouvrez le jeu avec l\'icône <b>🎃 Malédiction</b>.</span></li></ol>';
   else if (promptInstall) h += '<button class="btn gros" data-action="installer">📲 Installer le jeu</button><p class="doux">Puis ouvrez le jeu avec l\'icône <b>🎃 Malédiction</b>.</p>';
   else h += '<ol class="etapes-install"><li><span class="num">1</span><span>Touchez le menu <b>⋮</b> en haut à droite de Chrome.</span></li><li><span class="num">2</span><span>Touchez <b>« Installer l\'application »</b> ou <b>« Ajouter à l\'écran d\'accueil »</b>.</span></li><li><span class="num">3</span><span>Ouvrez le jeu avec l\'icône <b>🎃 Malédiction</b>.</span></li></ol><p class="doux petit">Déjà installé ? Ouvrez-le depuis l\'icône.</p>';
-  return h + '<button class="btn second" data-aller="partage">📱 Montrer le QR code du jeu</button><button class="btn discret" data-action="ouvrir-orga">🛠️ Espace organisateur (fonctionne sans installer)</button></section>';
+  return h + (CHARGE ? '<p class="alerte ok">✓ Parcours « ' + esc(CHARGE.nom) + ' » reçu. Installez le jeu, puis ouvrez-le depuis l\'icône.</p>' : "") + '<button class="btn second" data-aller="partage">📱 Montrer le QR code du jeu</button><button class="btn discret" data-action="ouvrir-orga">Organisateur : tester sans installer (code)</button></section>';
 };
 
 vues.localisation = function () {
@@ -1493,7 +1504,7 @@ function lancerVerif() {
   var res = [];
   var stockageOk = (function () { try { localStorage.setItem("__t", "1"); var v = localStorage.getItem("__t"); localStorage.removeItem("__t"); return v === "1"; } catch (e) { return false; } })();
   res.push({ titre: "Sauvegarde de la progression", etat: stockageOk ? "ok" : "ko", detail: stockageOk ? "La progression reste enregistrée même si le jeu est fermé." : "Le navigateur bloque la sauvegarde (navigation privée ?)." });
-  res.push({ titre: "Parcours chargé", etat: "ok", detail: JOUE.nom + " · " + JOUE.missions.length + " missions · " + JOUE.equipes.length + " équipe(s)." });
+  res.push(!JOUE ? { titre: "Parcours chargé", etat: "ko", detail: "Aucun parcours : scannez le QR code de l'organisateur." } : { titre: "Parcours chargé", etat: "ok", detail: JOUE.nom + " · " + JOUE.missions.length + " missions · " + JOUE.equipes.length + " équipe(s)." });
   res.push({ titre: "Connexion actuelle", etat: navigator.onLine ? "ok" : "att", detail: navigator.onLine ? "En ligne : le téléchargement des fichiers est possible." : "Hors ligne. Si tout le reste est vert, c'est bon signe !" });
   var voix = "speechSynthesis" in window;
   res.push({ titre: "Lecture à voix haute", etat: voix && voixFr ? (voixFr.localService ? "ok" : "att") : "att", detail: !voix ? "Pas disponible : un adulte lira à voix haute." : voixFr ? (voixFr.localService ? "Voix française installée." : "Voix française en ligne : testez-la en mode avion.") : "Aucune voix française trouvée. Un adulte lira." });
@@ -1536,6 +1547,7 @@ document.addEventListener("visibilitychange", function () { if (document.visibil
 /* Rendu                                                              */
 /* ------------------------------------------------------------------ */
 var apresRendu = [];
+var SANS_INSTALL = { partage: 1, pin: 1 };
 var ECRANS_JOUEUR = { intro: 1, equipes: 1, carte: 1, etape: 1, inventaire: 1, final: 1, victoire: 1, outils: 1 };
 var ECRANS_GPS = { intro: 1, equipes: 1, carte: 1, etape: 1, inventaire: 1, final: 1 };
 var ECRANS_ORGA = { orga: 1, edition: 1, mission: 1, envoi: 1 };
@@ -1545,12 +1557,13 @@ function rendre() {
   nettoyerJeux(); apresRendu = []; questionAffichee = null;
   var e = UI.ecran;
   if (ECRANS_ORGA[e] && !orgaDeverrouille) { e = UI.ecran = "accueil"; }
+  if (!TEST && !JOUE && (ECRANS_GPS[e] || e === "victoire")) e = UI.ecran = "accueil";
   if (!TEST && ECRANS_GPS[e] && e !== "intro" && e !== "equipes" && PARTIE.equipe == null) e = UI.ecran = "accueil";
   if (!TEST && e === "final" && PARTIE.victoire) e = UI.ecran = "victoire";
   if (!TEST && e === "etape" && PARTIE.courant == null) e = UI.ecran = "carte";
   if (TEST && e !== "etape" && e !== "pin") TEST = null;
   var v;
-  if (!TEST && ECRANS_JOUEUR[e] && !estInstalle() && !apercuAutorise()) v = vues.installer;
+  if (!TEST && !estInstalle() && !apercuAutorise() && !SANS_INSTALL[e]) v = vues.installer;
   else if (!TEST && ECRANS_GPS[e] && !UI.gps && !UI.sansGps && !window.APERCU_CLAUDE) v = vues.localisation;
   else v = vues[e] || vues.accueil;
   app.innerHTML = v();
@@ -1566,7 +1579,7 @@ function rendre() {
 /* ------------------------------------------------------------------ */
 var ACTIONS = {
   "retour-accueil": function () { aller("accueil"); },
-  commencer: function () { if (PARTIE.victoire) PARTIE = partieVierge(); sauverPartie(); son.fantome(); aller("intro"); },
+  commencer: function () { if (!JOUE) { aller("charger"); return; } if (PARTIE.victoire) PARTIE = partieVierge(); sauverPartie(); son.fantome(); aller("intro"); },
   son: function () { UI.son = !UI.son; sauverUI(); rendre(); if (UI.son) son.bon(); },
   gps: function () { lancerGPS(); rendre(); },
   "ouvrir-orga": function () { if (orgaDeverrouille) aller("orga"); else demanderCode("orga", "accueil"); },
