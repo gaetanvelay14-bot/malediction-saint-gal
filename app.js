@@ -222,13 +222,17 @@ function questionEnigme(p, t, mi, r, age) {
 }
 function defiPour(p, t, mi) {
   var m = p.missions[mi];
-  if (m.defis && m.defis[t] && m.defis[t].trim()) return m.defis[t].trim();
+  var perso = m.defis && m.defis[indexEquipe(m, t)];
+  if (perso && perso.trim()) return perso.trim();
   var auto = p.missions.map(function (x, i) { return i; }).filter(function (i) { var x = p.missions[i]; return x.type === "defi" && !(x.defis && x.defis[t] && x.defis[t].trim()); });
   var ordre = melanger(DEFIS.map(function (_, i) { return i; }), rng(hacher(p.graine + ":defis")));
   var k = p.missions.filter(function (x) { return x.type === "defi"; }).length;
   return DEFIS[ordre[(t * k + auto.indexOf(mi)) % ordre.length]];
 }
-function questionLieu(p, t, mi) { var m = p.missions[mi]; return (m.perso || [])[t] || null; }
+// Par défaut, une question écrite par l'organisateur vaut pour toutes les équipes
+function estCommune(m) { return m.commune !== false; }
+function indexEquipe(m, t) { return estCommune(m) ? 0 : t; }
+function questionLieu(p, t, mi) { var m = p.missions[mi]; return (m.perso || [])[indexEquipe(m, t)] || null; }
 
 /* ----- Durée estimée ----- */
 var VITESSE_ENFANTS = 42; // mètres par minute, en groupe avec des petits
@@ -266,11 +270,11 @@ function verifier(p) {
   if (T * nbDefis > DEFIS.length) alertes.push("Beaucoup de défis : certains pourraient revenir deux fois.");
   p.missions.forEach(function (m, i) {
     var n = "Mission " + (i + 1) + " (" + (m.nom || "sans nom") + ")";
-    if (m.type === "observation") for (var t = 0; t < T; t++) {
+    if (m.type === "observation") for (var t = 0; t < (estCommune(m) ? 1 : T); t++) {
       var q = (m.perso || [])[t];
-      if (!q || !q.question || !q.question.trim()) erreurs.push(n + " : écrivez la question pour l'équipe " + p.equipes[t].nom + ".");
-      else if (q.mode === "choix" && (!q.options || q.options.filter(function (o) { return o && o.trim(); }).length < 2)) erreurs.push(n + " : il faut au moins 2 réponses pour l'équipe " + p.equipes[t].nom + ".");
-      else if (q.mode !== "choix" && !(q.reponse || "").trim()) erreurs.push(n + " : indiquez la bonne réponse pour l'équipe " + p.equipes[t].nom + ".");
+      if (!q || !q.question || !q.question.trim()) erreurs.push(n + " : écrivez la question" + (estCommune(m) ? "" : " pour l'équipe " + p.equipes[t].nom) + ".");
+      else if (q.mode === "choix" && (!q.options || q.options.filter(function (o) { return o && o.trim(); }).length < 2)) erreurs.push(n + " : il faut au moins 2 réponses" + (estCommune(m) ? "" : " pour l'équipe " + p.equipes[t].nom) + ".");
+      else if (q.mode !== "choix" && !(q.reponse || "").trim()) erreurs.push(n + " : indiquez la bonne réponse" + (estCommune(m) ? "" : " pour l'équipe " + p.equipes[t].nom) + ".");
     }
     if (!m.indice || !m.indice.trim()) alertes.push(n + " : pas de phrase pour dire où aller.");
     if (!horsCarte(m)) {} else alertes.push(n + " : elle est en dehors de la carte du village.");
@@ -1409,7 +1413,12 @@ function ongletsEquipes(p, T) {
   if (p.equipes.length < 2) return "";
   return '<div class="segment">' + p.equipes.map(function (e, t) { return '<button class="' + (t === T ? "actif" : "") + '" data-eqtab="' + t + '">' + e.emoji + " " + esc(e.nom) + "</button>"; }).join("") + "</div>";
 }
+function choixCommune(p, m, b) {
+  if (p.equipes.length < 2) return "";
+  return '<label class="interrupteur"><input type="checkbox" data-champ="' + b + 'commune" data-type="bool" data-rendre' + (estCommune(m) ? " checked" : "") + '><span>Même ' + (m.type === "defi" ? "défi" : "question") + ' pour toutes les équipes</span></label>';
+}
 function reglagesType(p, m, i, b, T) {
+  if (estCommune(m) && (m.type === "observation" || m.type === "defi")) T = 0;
   if (m.type === "enigmes") {
     return etiq("Séries de questions", '<div class="pas"><button data-pas="' + b + 'nb" data-d="-1">−</button><b>' + m.nb + '</b><button data-pas="' + b + 'nb" data-d="1">+</button></div>') +
       '<p class="doux petit">Une série = une question pour chaque âge coché (' + agesActifs(p).map(function (a) { return a.nom.toLowerCase(); }).join(", ") + "). Questions tirées au hasard, différentes pour chaque équipe.</p>";
@@ -1419,16 +1428,16 @@ function reglagesType(p, m, i, b, T) {
     return etiq("Difficulté", segment(b + "niveau", [[1, "Facile"], [2, "Moyen"], [3, "Difficile"]], true)) + '<p class="doux petit">' + d[m.niveau - 1] + "</p>";
   }
   if (m.type === "defi") {
-    return ongletsEquipes(p, T) +
-      etiq("Défi pour l'équipe " + esc(p.equipes[T].nom), champ(b + "defis." + T, { zone: true, lignes: 3, ph: "Laissez vide pour un défi tiré au hasard. Ex. : « " + defiPour(p, T, i) + " »" })) +
+    return choixCommune(p, m, b) + (estCommune(m) ? "" : ongletsEquipes(p, T)) +
+      etiq(estCommune(m) || p.equipes.length < 2 ? "Défi (pour toutes les équipes)" : "Défi pour l'équipe " + esc(p.equipes[T].nom), champ(b + "defis." + T, { zone: true, lignes: 3, ph: "Laissez vide pour un défi tiré au hasard, différent pour chaque équipe. Ex. : « " + defiPour(p, T, i) + " »" })) +
       etiq("Chrono", selection(b + "chrono", [[0, "Pas de chrono"], [20, "20 s"], [30, "30 s"], [60, "1 min"], [120, "2 min"]])) +
       '<p class="doux petit">Un adulte valide le défi avec le code adulte (' + esc(p.code) + ").</p>";
   }
   if (m.type === "observation") {
     var q = (m.perso || [])[T] || {}, c = b + "perso." + T + ".", mode = q.mode || "choix";
     if (!q.mode) poser(p, c + "mode", "choix");
-    var h = ongletsEquipes(p, T) + '<p class="doux petit">Écrivez une question qu\'on ne peut résoudre qu\'en regardant sur place. Allez vérifier la réponse !</p>' +
-      etiq("Question pour l'équipe " + esc(p.equipes[T].nom), champ(c + "question", { zone: true, ph: "Ex. : Combien de fenêtres voyez-vous sur la façade de la mairie ?" })) +
+    var h = choixCommune(p, m, b) + (estCommune(m) ? "" : ongletsEquipes(p, T)) + '<p class="doux petit">Écrivez une question qu\'on ne peut résoudre qu\'en regardant sur place. Allez vérifier la réponse !</p>' +
+      etiq(estCommune(m) || p.equipes.length < 2 ? "Question (pour toutes les équipes)" : "Question pour l'équipe " + esc(p.equipes[T].nom), champ(c + "question", { zone: true, ph: "Ex. : Combien de fenêtres voyez-vous sur la façade de la mairie ?" })) +
       etiq("Type de réponse", segment(c + "mode", [["choix", "4 choix"], ["nombre", "Un nombre"], ["mot", "Un mot"]]));
     if (mode === "choix") {
       h += [0, 1, 2, 3].map(function (k) { var bonne = +(q.bonne || 0) === k; return '<div class="ligne option-ligne"><button class="rond' + (bonne ? " actif" : "") + '" data-poser="' + c + 'bonne" data-val="' + k + '" data-num aria-label="Bonne réponse">' + (bonne ? "✓" : "") + "</button>" + champ(c + "options." + k, { ph: "Réponse " + (k + 1) + (k < 2 ? "" : " (facultatif)") }) + "</div>"; }).join("") + '<p class="doux petit">Touchez le rond de la bonne réponse.</p>';
