@@ -1461,7 +1461,8 @@ vues.envoi = function () {
 /* ------------------------------------------------------------------ */
 var promptInstall = null, installAccepte = false;
 function estInstalle() { try { return window.matchMedia("(display-mode: standalone)").matches || window.matchMedia("(display-mode: fullscreen)").matches || window.navigator.standalone === true; } catch (e) { return false; } }
-function apercuAutorise() { if (window.APERCU_CLAUDE) return true; try { return sessionStorage.getItem("apercu-orga") === "1"; } catch (e) { return false; } }
+// Aucune exception : il faut installer le jeu (sauf dans l'aperçu de Claude)
+function apercuAutorise() { return !!window.APERCU_CLAUDE; }
 window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); promptInstall = e; if (!estInstalle()) rendre(); });
 window.addEventListener("appinstalled", function () { installAccepte = true; rendre(); });
 var ua = navigator.userAgent || "";
@@ -1477,7 +1478,7 @@ vues.installer = function () {
   else if (estIOS) h += '<ol class="etapes-install"><li><span class="num">1</span><span>Touchez le bouton <b>Partager</b> ⬆️ (le carré avec une flèche).</span></li><li><span class="num">2</span><span>Touchez <b>« Sur l\'écran d\'accueil »</b> ➕.</span></li><li><span class="num">3</span><span>Touchez <b>« Ajouter »</b>.</span></li><li><span class="num">4</span><span>Ouvrez le jeu avec l\'icône <b>🎃 Malédiction</b>.</span></li></ol>';
   else if (promptInstall) h += '<button class="btn gros" data-action="installer">📲 Installer le jeu</button><p class="doux">Puis ouvrez le jeu avec l\'icône <b>🎃 Malédiction</b>.</p>';
   else h += '<ol class="etapes-install"><li><span class="num">1</span><span>Touchez le menu <b>⋮</b> en haut à droite de Chrome.</span></li><li><span class="num">2</span><span>Touchez <b>« Installer l\'application »</b> ou <b>« Ajouter à l\'écran d\'accueil »</b>.</span></li><li><span class="num">3</span><span>Ouvrez le jeu avec l\'icône <b>🎃 Malédiction</b>.</span></li></ol><p class="doux petit">Déjà installé ? Ouvrez-le depuis l\'icône.</p>';
-  return h + (CHARGE ? '<p class="alerte ok">✓ Parcours « ' + esc(CHARGE.nom) + ' » reçu. Installez le jeu, puis ouvrez-le depuis l\'icône.</p>' : "") + '<button class="btn second" data-aller="partage">📱 Montrer le QR code du jeu</button><button class="btn discret" data-action="ouvrir-orga">Organisateur : tester sans installer (code)</button></section>';
+  return h + (CHARGE ? '<p class="alerte ok">✓ Parcours « ' + esc(CHARGE.nom) + ' » reçu. Installez le jeu, puis ouvrez-le depuis l\'icône.</p>' : "") + '<button class="btn second" data-aller="partage">📱 Montrer le QR code du jeu</button></section>';
 };
 
 vues.localisation = function () {
@@ -1547,7 +1548,7 @@ document.addEventListener("visibilitychange", function () { if (document.visibil
 /* Rendu                                                              */
 /* ------------------------------------------------------------------ */
 var apresRendu = [];
-var SANS_INSTALL = { partage: 1, pin: 1 };
+var SANS_INSTALL = { partage: 1 };
 var ECRANS_JOUEUR = { intro: 1, equipes: 1, carte: 1, etape: 1, inventaire: 1, final: 1, victoire: 1, outils: 1 };
 var ECRANS_GPS = { intro: 1, equipes: 1, carte: 1, etape: 1, inventaire: 1, final: 1 };
 var ECRANS_ORGA = { orga: 1, edition: 1, mission: 1, envoi: 1 };

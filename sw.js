@@ -4,7 +4,7 @@
 /* Liste des fichiers enregistrés sur le téléphone pour le mode avion.
    Utilisée par sw.js et par l'écran « Prêt pour le mode avion ».
    Changer VERSION_CACHE force la mise à jour sur les téléphones. */
-var VERSION_CACHE = "malediction-v9";
+var VERSION_CACHE = "malediction-v10";
 var FICHIERS = [
   "./",
   "index.html",
