@@ -1,15 +1,16 @@
-/* Liste des fichiers mis en cache pour le mode avion.
-   Utilisée par sw.js ET par l'écran « Prêt pour le mode avion ».
-   Si tu ajoutes une image (carte.jpg, sons…), ajoute son nom ici,
-   puis change VERSION_CACHE pour forcer la mise à jour sur les téléphones. */
-var VERSION_CACHE = "malediction-v6";
+/* Liste des fichiers enregistrés sur le téléphone pour le mode avion.
+   Utilisée par sw.js et par l'écran « Prêt pour le mode avion ».
+   Changer VERSION_CACHE force la mise à jour sur les téléphones. */
+var VERSION_CACHE = "malediction-v7";
 var FICHIERS = [
   "./",
   "index.html",
   "style.css",
   "fichiers.js",
+  "lib/qrcode.js",
+  "lib/jsQR.js",
   "carte-saint-gal.js",
-  "data.js",
+  "config.js",
   "questions.js",
   "app.js",
   "manifest.webmanifest",
